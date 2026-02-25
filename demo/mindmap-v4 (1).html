@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>MindSpace</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&family=Instrument+Serif:ital@0;1&display=swap');
+
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+
+  :root{
+    --bg:#08080d;
+    --text-primary:#e8e6e1;
+    --text-secondary:rgba(232,230,225,0.55);
+    --text-tertiary:rgba(232,230,225,0.28);
+    --sheet-bg:rgba(14,14,20,0.97);
+  }
+
+  body{
+    font-family:'DM Sans',sans-serif;
+    background:var(--bg);color:var(--text-primary);
+    height:100vh;width:100vw;overflow:hidden;
+    touch-action:none;user-select:none;
+  }
+
+  .status-bar{
+    position:fixed;top:0;left:0;right:0;height:52px;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 24px;z-index:100;pointer-events:none;
+    background:linear-gradient(to bottom,rgba(8,8,13,0.95) 0%,transparent 100%);
+  }
+  .status-bar .time{font-size:15px;font-weight:500;letter-spacing:0.02em}
+  .status-bar .icons{display:flex;gap:5px;font-size:12px;opacity:0.5}
+
+  .viewport{position:absolute;inset:0;overflow:hidden;cursor:grab;transition:filter 0.6s ease, opacity 0.6s ease}
+  .viewport:active{cursor:grabbing}
+  .viewport.blurred{filter:blur(8px) brightness(0.35);opacity:0.6;pointer-events:none}
+
+  .world{
+    position:absolute;width:1400px;height:1400px;
+    will-change:transform;
+    transition:transform 0.65s cubic-bezier(0.25,1,0.35,1);
+  }
+  .world.dragging{transition:none!important}
+
+  canvas#nebulaCanvas{position:absolute;inset:0;width:1400px;height:1400px;pointer-events:none;z-index:0}
+  canvas#nebulaDeepCanvas{position:absolute;inset:0;width:1400px;height:1400px;pointer-events:none;z-index:0;transition:opacity 0.6s ease}
+  canvas#connectionCanvas{position:absolute;inset:0;width:1400px;height:1400px;pointer-events:none;z-index:1;transition:opacity 0.6s ease}
+
+  .tom{
+    position:absolute;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    z-index:5;transform:translate(-50%,-50%);
+    transition:opacity 0.4s ease;
+  }
+  .tom.invisible{opacity:0;pointer-events:none}
+  .tom-core{position:relative;display:flex;align-items:center;justify-content:center}
+  .tom-halo{
+    position:absolute;border-radius:50%;pointer-events:none;
+    animation:haloBreath 4s ease-in-out infinite;
+  }
+  @keyframes haloBreath{0%,100%{transform:scale(1);opacity:0.7}50%{transform:scale(1.15);opacity:0.4}}
+  .tom-ring{
+    position:absolute;border-radius:50%;pointer-events:none;
+    animation:ringPulse 3s ease-in-out infinite;
+  }
+  @keyframes ringPulse{0%,100%{transform:scale(1);opacity:0.5}50%{transform:scale(1.3);opacity:0.15}}
+  .tom-dot{border-radius:50%;position:relative;z-index:2;transition:transform 0.25s ease, opacity 0.5s ease}
+  .tom:active .tom-dot{transform:scale(1.4)}
+  .tom-label{
+    font-family:'Instrument Serif',serif;text-align:center;white-space:nowrap;
+    pointer-events:none;
+    transition:font-size 0.5s cubic-bezier(0.25,1,0.35,1),
+               color 0.5s ease,
+               opacity 0.4s ease;
+    text-shadow:0 1px 8px rgba(0,0,0,0.8);
+  }
+
+  /* Active node — the one you tapped */
+  .tom.active .tom-label{
+    color:rgba(232,230,225,0.9) !important;
+  }
+  .tom.active .tom-dot{
+    transform:scale(1.3);
+  }
+
+  /* Adjacent nodes — neighbors of the active node */
+  .tom.adjacent .tom-label{
+    color:rgba(232,230,225,0.6) !important;
+  }
+
+  .region-label{
+    position:fixed;top:56px;left:0;right:0;text-align:center;z-index:90;
+    font-family:'Instrument Serif',serif;font-size:14px;
+    color:var(--text-tertiary);letter-spacing:0.06em;
+    opacity:0;transition:opacity 0.5s ease;
+    cursor:pointer;
+    pointer-events:none;
+  }
+  .region-label.visible{opacity:1;pointer-events:auto}
+  .region-label:active{color:var(--text-secondary)}
+
+  .zoom-indicator{
+    position:fixed;right:14px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;gap:3px;z-index:90;align-items:center;
+    transition:opacity 0.4s ease;
+  }
+  .zoom-indicator.hidden{opacity:0;pointer-events:none}
+  .zoom-track{width:2px;height:60px;background:rgba(255,255,255,0.06);border-radius:1px;position:relative}
+  .zoom-thumb{width:6px;height:12px;border-radius:3px;background:rgba(255,255,255,0.35);position:absolute;left:-2px;transition:top 0.3s ease}
+  .zoom-home{
+    width:16px;height:16px;border-radius:50%;margin-top:8px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;transition:all 0.2s ease;
+    background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.06);
+    font-size:8px;color:var(--text-tertiary);
+  }
+  .zoom-home:hover{background:rgba(255,255,255,0.08);color:var(--text-secondary)}
+  .zoom-home:active{transform:scale(0.9)}
+
+  /* ===== TOM BEACON — compact pill anchored at top ===== */
+  .tom-beacon{
+    position:fixed;
+    top:-60px;
+    left:50%;
+    transform:translateX(-50%);
+    z-index:260;
+    display:flex;align-items:center;gap:10px;
+    pointer-events:none;
+    opacity:0;
+    padding:8px 18px 8px 12px;
+    border-radius:100px;
+    background:rgba(14,14,20,0.85);
+    backdrop-filter:blur(30px);-webkit-backdrop-filter:blur(30px);
+    border:1px solid rgba(255,255,255,0.06);
+    transition:top 0.6s cubic-bezier(0.25,1,0.35,1),
+               opacity 0.4s ease;
+  }
+  .tom-beacon.rising{
+    top:56px;
+    opacity:1;
+    pointer-events:auto;
+  }
+
+  .beacon-dot-wrap{
+    position:relative;
+    width:28px;height:28px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
+  }
+  .beacon-halo{
+    position:absolute;inset:-4px;border-radius:50%;
+    animation:beaconPulse 3.5s ease-in-out infinite;
+  }
+  @keyframes beaconPulse{
+    0%,100%{transform:scale(1);opacity:0.5}
+    50%{transform:scale(1.3);opacity:0.15}
+  }
+  .beacon-dot{
+    width:10px;height:10px;border-radius:50%;
+    position:relative;z-index:2;
+  }
+
+  .beacon-info{
+    display:flex;flex-direction:column;gap:1px;
+    min-width:0;
+  }
+  .beacon-label{
+    font-family:'DM Sans',sans-serif;
+    font-size:9px;
+    color:var(--text-tertiary);
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    white-space:nowrap;
+    line-height:1;
+  }
+  .beacon-title{
+    font-family:'Instrument Serif',serif;
+    font-size:15px;
+    color:var(--text-primary);
+    letter-spacing:-0.01em;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    line-height:1.2;
+  }
+
+  .beacon-progress{
+    width:32px;height:32px;
+    flex-shrink:0;
+    position:relative;
+    margin-left:4px;
+  }
+  .beacon-progress svg{transform:rotate(-90deg)}
+  .beacon-progress .bp-bg{stroke:rgba(255,255,255,0.06);fill:none;stroke-width:2.5}
+  .beacon-progress .bp-fill{fill:none;stroke-width:2.5;stroke-linecap:round;transition:stroke-dashoffset 1s ease 0.4s}
+  .beacon-pct{
+    position:absolute;inset:0;
+    display:flex;align-items:center;justify-content:center;
+    font-size:8px;color:var(--text-tertiary);font-weight:500;
+  }
+
+  /* Tether — thin light thread connecting beacon to sheet */
+  .beacon-tether{
+    position:fixed;
+    left:50%;
+    width:1px;
+    transform:translateX(-50%);
+    z-index:259;
+    pointer-events:none;
+    opacity:0;
+    height:0;
+    transition:height 0.5s cubic-bezier(0.25,1,0.35,1) 0.1s,
+               opacity 0.4s ease 0.15s;
+  }
+  .beacon-tether.visible{
+    opacity:1;
+  }
+
+  /* Sheet top glow — light cast downward from the beacon */
+  .sheet-glow{
+    position:absolute;
+    top:-1px;left:0;right:0;
+    height:60px;
+    border-radius:18px 18px 0 0;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity 0.4s ease 0.1s;
+    z-index:1;
+  }
+  .half-sheet[data-state="full"] .sheet-glow{
+    opacity:1;
+  }
+
+  .sheet-glow-line{
+    position:absolute;
+    top:0;left:15%;right:15%;
+    height:1px;
+    border-radius:1px;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity 0.4s ease 0.2s;
+    z-index:2;
+  }
+  .half-sheet[data-state="full"] .sheet-glow-line{
+    opacity:0.5;
+  }
+
+  /* ===== HALF SHEET ===== */
+  .half-sheet{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--sheet-bg);
+    backdrop-filter:blur(50px);-webkit-backdrop-filter:blur(50px);
+    border-radius:18px 18px 0 0;z-index:200;
+    transition:transform 0.5s cubic-bezier(0.25,1,0.35,1);
+    box-shadow:0 -2px 40px rgba(0,0,0,0.6);will-change:transform;
+  }
+  .sheet-handle{width:34px;height:4px;border-radius:2px;background:rgba(255,255,255,0.15);margin:10px auto 0;cursor:grab}
+
+  .half-sheet[data-state="peek"]{transform:translateY(calc(100% - 84px))}
+  .half-sheet[data-state="half"]{transform:translateY(calc(100% - 320px))}
+  .half-sheet[data-state="full"]{transform:translateY(calc(100% - 82vh));border-radius:18px 18px 0 0}
+
+  .sheet-content{padding:14px 22px 40px;height:100vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+
+  .input-area{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .input-box{
+    flex:1;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.07);
+    border-radius:13px;padding:13px 16px;color:var(--text-primary);
+    font-family:'DM Sans',sans-serif;font-size:15px;outline:none;transition:all 0.3s ease;
+  }
+  .input-box::placeholder{color:var(--text-tertiary)}
+  .input-box:focus{border-color:rgba(255,255,255,0.14);background:rgba(255,255,255,0.07)}
+  .input-send{
+    width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,0.07);border:none;
+    color:var(--text-secondary);font-size:17px;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;transition:all 0.2s;flex-shrink:0;
+  }
+  .input-send:hover{background:rgba(255,255,255,0.12)}
+
+  .quick-actions{display:flex;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:2px}
+  .quick-actions::-webkit-scrollbar{display:none}
+  .quick-chip{
+    flex-shrink:0;padding:7px 14px;border-radius:100px;
+    background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);
+    font-size:13px;color:var(--text-secondary);cursor:pointer;
+    transition:all 0.2s;white-space:nowrap;font-weight:300;
+  }
+  .quick-chip:active{background:rgba(255,255,255,0.09);transform:scale(0.96)}
+
+  /* Preview */
+  .preview{opacity:0;transform:translateY(8px);transition:all 0.35s ease 0.08s;pointer-events:none}
+  .half-sheet[data-state="half"] .preview{opacity:1;transform:translateY(0);pointer-events:auto}
+
+  .preview-top{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+  .preview-progress-ring{flex-shrink:0;position:relative;width:44px;height:44px}
+  .preview-progress-ring svg{transform:rotate(-90deg)}
+  .preview-progress-ring .ring-bg{stroke:rgba(255,255,255,0.06);fill:none;stroke-width:3}
+  .preview-progress-ring .ring-fill{fill:none;stroke-width:3;stroke-linecap:round;transition:stroke-dashoffset 0.8s ease 0.3s}
+  .preview-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-tertiary);font-weight:400}
+  .preview-info{flex:1}
+  .preview-title{font-family:'Instrument Serif',serif;font-size:22px;color:var(--text-primary);letter-spacing:-0.01em;line-height:1.2}
+  .preview-meta{font-size:12px;color:var(--text-tertiary);margin-top:3px}
+
+  .preview-threads{display:flex;flex-direction:column;gap:8px;margin-top:16px}
+  .preview-thread{
+    background:rgba(255,255,255,0.03);border-radius:11px;padding:12px 14px;
+    display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;transition:all 0.2s;border:1px solid rgba(255,255,255,0.03);
+  }
+  .preview-thread:active{background:rgba(255,255,255,0.06);border-color:rgba(255,255,255,0.07)}
+  .thread-title{font-size:13px;color:var(--text-primary);font-weight:400}
+  .thread-sub{font-size:11px;color:var(--text-tertiary);font-weight:300;margin-top:2px}
+  .thread-arrow{color:var(--text-tertiary);font-size:14px}
+  .swipe-hint{text-align:center;font-size:11px;color:var(--text-tertiary);letter-spacing:0.1em;text-transform:uppercase;margin-top:14px;animation:hintPulse 2.5s ease-in-out infinite}
+  @keyframes hintPulse{0%,100%{opacity:0.3}50%{opacity:0.6}}
+
+  /* Full Content — now lives BELOW the beacon in the sheet */
+  .full-content{opacity:0;transform:translateY(16px);transition:all 0.45s ease 0.2s;pointer-events:none;padding-top:16px}
+  .half-sheet[data-state="full"] .full-content{opacity:1;transform:translateY(0);pointer-events:auto}
+  .half-sheet[data-state="full"] .preview{opacity:0;pointer-events:none}
+
+  .full-section{margin-bottom:24px}
+  .full-section-label{font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--text-tertiary);margin-bottom:10px}
+  .full-section p{font-size:14px;line-height:1.7;color:var(--text-secondary);font-weight:300}
+  .full-progress{margin-bottom:26px}
+  .full-progress-label{display:flex;justify-content:space-between;font-size:11px;color:var(--text-tertiary);margin-bottom:6px}
+  .full-progress-bar{height:2px;background:rgba(255,255,255,0.05);border-radius:1px;overflow:hidden}
+  .full-progress-fill{height:100%;border-radius:1px;transition:width 1s ease 0.4s}
+  .open-questions{display:flex;flex-direction:column;gap:8px}
+  .open-q{
+    padding:12px 14px;background:rgba(255,255,255,0.02);
+    border-left:2px solid;border-radius:0 8px 8px 0;
+    font-size:13px;color:var(--text-secondary);line-height:1.5;font-weight:300;
+  }
+
+  /* Dismiss hint at bottom of full sheet */
+  .dismiss-hint{
+    text-align:center;padding:20px 0 10px;
+    font-size:11px;color:var(--text-tertiary);
+    letter-spacing:0.08em;text-transform:uppercase;
+    opacity:0;transition:opacity 0.4s ease 0.6s;
+  }
+  .half-sheet[data-state="full"] .dismiss-hint{opacity:0.5}
+
+  /* ===== RESPONSIVE ===== */
+  
+  /* Phone frame container — everything lives inside this on desktop */
+  .phone-frame{
+    position:relative;
+    width:100%;height:100%;
+    max-width:430px;
+    margin:0 auto;
+    overflow:hidden;
+  }
+
+  @media(min-width:500px){
+    body{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background:#030306;
+    }
+    .phone-frame{
+      height:min(100vh, 900px);
+      border-radius:40px;
+      border:1px solid rgba(255,255,255,0.06);
+      box-shadow:0 0 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.03);
+      overflow:hidden;
+      position:relative;
+    }
+    /* All fixed elements become absolute within the phone frame */
+    .status-bar{position:absolute}
+    .region-label{position:absolute}
+    .zoom-indicator{position:absolute}
+    .tom-beacon{position:absolute}
+    .beacon-tether{position:absolute}
+    .half-sheet{position:absolute}
+    .viewport{position:absolute}
+  }
+
+  /* Tablet */
+  @media(min-width:768px){
+    .phone-frame{
+      height:min(100vh - 40px, 860px);
+      margin:20px auto;
+    }
+  }
+
+  /* Large desktop */
+  @media(min-width:1200px){
+    .phone-frame{
+      height:min(100vh - 60px, 880px);
+      margin:30px auto;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="phone-frame" id="phoneFrame">
+
+<div class="status-bar">
+  <div class="time">9:41</div>
+  <div class="icons">●●●● WiFi 100%</div>
+</div>
+
+<div class="region-label" id="regionLabel"></div>
+
+<div class="zoom-indicator" id="zoomIndicator">
+  <div class="zoom-track"><div class="zoom-thumb" id="zoomThumb"></div></div>
+  <div class="zoom-home" id="zoomHome" onclick="goHome()" title="Home">⌂</div>
+</div>
+
+<!-- TOM BEACON — compact pill at top -->
+<div class="tom-beacon" id="tomBeacon">
+  <div class="beacon-dot-wrap">
+    <div class="beacon-halo" id="beaconHalo"></div>
+    <div class="beacon-dot" id="beaconDot"></div>
+  </div>
+  <div class="beacon-info">
+    <div class="beacon-label">Top of Mind</div>
+    <div class="beacon-title" id="beaconTitle"></div>
+  </div>
+  <div class="beacon-progress" id="beaconProgress">
+    <svg width="32" height="32" viewBox="0 0 32 32">
+      <circle class="bp-bg" cx="16" cy="16" r="12"/>
+      <circle class="bp-fill" id="bpFill" cx="16" cy="16" r="12"
+        stroke-dasharray="75.4" stroke-dashoffset="75.4"/>
+    </svg>
+    <div class="beacon-pct" id="beaconPct">0%</div>
+  </div>
+</div>
+
+<!-- Tether — separate fixed element so it can bridge beacon and sheet -->
+<div class="beacon-tether" id="beaconTether"></div>
+
+<div class="viewport" id="viewport">
+  <div class="world" id="world">
+    <canvas id="nebulaCanvas" width="1400" height="1400"></canvas>
+    <canvas id="nebulaDeepCanvas" width="1400" height="1400"></canvas>
+    <canvas id="connectionCanvas" width="1400" height="1400"></canvas>
+  </div>
+</div>
+
+<div class="half-sheet" id="sheet" data-state="peek">
+  <div class="sheet-glow" id="sheetGlow"></div>
+  <div class="sheet-glow-line" id="sheetGlowLine"></div>
+  <div class="sheet-handle"></div>
+  <div class="sheet-content">
+    <div class="input-area">
+      <input class="input-box" placeholder="What's on your mind...">
+      <button class="input-send">↑</button>
+    </div>
+    <div class="quick-actions" id="quickActions">
+      <div class="quick-chip" onclick="quickNav('hubble')">Continue Hubble paper</div>
+      <div class="quick-chip" onclick="quickNav('softbank')">SoftBank prep</div>
+      <div class="quick-chip" onclick="quickNav('mindspace')">MindSpace UX</div>
+      <div class="quick-chip">3 messages</div>
+    </div>
+    <div class="preview" id="preview">
+      <div class="preview-top">
+        <div class="preview-progress-ring">
+          <svg width="44" height="44" viewBox="0 0 44 44">
+            <circle class="ring-bg" cx="22" cy="22" r="18"/>
+            <circle class="ring-fill" id="ringFill" cx="22" cy="22" r="18" stroke-dasharray="113.1" stroke-dashoffset="113.1"/>
+          </svg>
+          <div class="preview-pct" id="previewPct">0%</div>
+        </div>
+        <div class="preview-info">
+          <div class="preview-title" id="previewTitle"></div>
+          <div class="preview-meta" id="previewMeta"></div>
+        </div>
+      </div>
+      <div class="preview-threads" id="previewThreads"></div>
+      <div class="swipe-hint">Swipe up to focus</div>
+    </div>
+    <div class="full-content" id="fullContent">
+      <div class="full-progress">
+        <div class="full-progress-label"><span>Progress</span><span id="fullPct">0%</span></div>
+        <div class="full-progress-bar"><div class="full-progress-fill" id="fullFill"></div></div>
+      </div>
+      <div class="full-section">
+        <div class="full-section-label">Where you left off</div>
+        <p id="fullWhere"></p>
+      </div>
+      <div class="full-section">
+        <div class="full-section-label">Open questions</div>
+        <div class="open-questions" id="fullQuestions"></div>
+      </div>
+      <div class="dismiss-hint">↓ Swipe down to return to map</div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /phone-frame -->
+
+<script>
+const nodes = [
+  {id:'physics',x:300,y:340,tier:0,hue:260,temp:1.0,size:16,label:'Physics'},
+  {id:'hubble',x:200,y:240,tier:1,hue:262,temp:0.95,size:10,label:'Hubble Tension'},
+  {id:'boundary',x:180,y:440,tier:1,hue:255,temp:0.7,size:9,label:'Boundary Laws'},
+  {id:'quantum',x:420,y:260,tier:1,hue:270,temp:0.35,size:7,label:'Quantum Cosmo'},
+  {id:'subcrit',x:260,y:180,tier:2,hue:263,temp:0.8,size:5,label:'Subcritical Turbulence'},
+  {id:'nature',x:120,y:300,tier:2,hue:268,temp:0.6,size:5,label:'Nature Submission'},
+  {id:'fluid',x:140,y:500,tier:2,hue:252,temp:0.4,size:4,label:'Fluid Dynamics'},
+  {id:'planck',x:280,y:160,tier:2,hue:265,temp:0.5,size:4,label:'Planck Constraints'},
+  {id:'s8',x:340,y:200,tier:2,hue:258,temp:0.45,size:4,label:'S₈ Tension'},
+  {id:'business',x:950,y:350,tier:0,hue:30,temp:0.95,size:15,label:'Launch'},
+  {id:'softbank',x:860,y:230,tier:1,hue:28,temp:0.9,size:10,label:'SoftBank'},
+  {id:'carrier',x:1080,y:420,tier:1,hue:35,temp:0.65,size:8,label:'Carriers'},
+  {id:'byd',x:1020,y:240,tier:1,hue:32,temp:0.6,size:7,label:'BYD / ODM'},
+  {id:'japan',x:780,y:180,tier:2,hue:26,temp:0.8,size:5,label:'5K Japan Stores'},
+  {id:'cert',x:920,y:160,tier:2,hue:30,temp:0.7,size:4,label:'Device Certification'},
+  {id:'tmobile',x:1120,y:340,tier:2,hue:36,temp:0.55,size:4,label:'T-Mobile Deal'},
+  {id:'notes',x:1060,y:500,tier:2,hue:34,temp:0.4,size:4,label:'Convertible Notes'},
+  {id:'team',x:900,y:480,tier:2,hue:33,temp:0.45,size:4,label:'Team Structure'},
+  {id:'design',x:460,y:820,tier:0,hue:172,temp:0.75,size:13,label:'Design'},
+  {id:'mindspace',x:340,y:740,tier:1,hue:174,temp:0.85,size:10,label:'MindSpace'},
+  {id:'surfaces',x:560,y:920,tier:1,hue:168,temp:0.55,size:8,label:'Three Surfaces'},
+  {id:'island',x:280,y:860,tier:2,hue:176,temp:0.6,size:5,label:'Island System'},
+  {id:'agentbox',x:600,y:820,tier:2,hue:165,temp:0.5,size:4,label:'Agent Box'},
+  {id:'tomux',x:380,y:660,tier:2,hue:175,temp:0.7,size:5,label:'TOM Metadata'},
+  {id:'genui',x:520,y:780,tier:2,hue:170,temp:0.45,size:4,label:'GenUI Layer'},
+  {id:'personal',x:880,y:800,tier:0,hue:90,temp:0.2,size:10,label:'Personal'},
+  {id:'reading',x:940,y:740,tier:1,hue:95,temp:0.15,size:6,label:'Reading'},
+  {id:'learning',x:820,y:880,tier:2,hue:88,temp:0.1,size:4,label:'AI Learning'},
+];
+
+const conns = [
+  ['physics','hubble',0.9],['physics','boundary',0.8],['physics','quantum',0.4],
+  ['hubble','boundary',0.85],['hubble','subcrit',0.7],['hubble','nature',0.6],
+  ['hubble','planck',0.5],['hubble','s8',0.5],['boundary','fluid',0.6],
+  ['subcrit','planck',0.3],['s8','planck',0.4],
+  ['business','softbank',0.9],['business','carrier',0.7],['business','byd',0.6],
+  ['softbank','japan',0.8],['softbank','cert',0.7],
+  ['carrier','tmobile',0.6],['carrier','notes',0.3],['business','team',0.4],
+  ['design','mindspace',0.9],['design','surfaces',0.6],
+  ['mindspace','surfaces',0.5],['mindspace','island',0.6],['mindspace','tomux',0.7],
+  ['surfaces','agentbox',0.5],['surfaces','genui',0.4],['design','agentbox',0.4],
+  ['personal','reading',0.3],['personal','learning',0.2],
+  ['design','business',0.15],['physics','design',0.1],['mindspace','tomux',0.7],
+];
+
+const nodeData = {
+  physics:{title:'Physics Research',meta:'Active daily · 4 threads',hue:260,progress:55,
+    summary:'Theoretical physics spanning cosmology, quantum mechanics, and fluid dynamics.',
+    threads:[{t:'Hubble Tension Paper',s:'68% complete'},{t:'Boundary Interaction Laws',s:'5 open questions'},{t:'Quantum Cosmology',s:'Early stage'}],
+    where:'Working across multiple physics threads with the Hubble tension paper most active.',
+    questions:['How do boundary and Hubble threads connect formally?','When to begin quantum cosmology formalization?']},
+  hubble:{title:'Hubble Tension Paper',meta:'2h ago · 68% complete',hue:262,progress:68,
+    summary:'Boundary interaction laws in subcritical turbulence resolving the Hubble tension.',
+    threads:[{t:'Boundary condition derivations',s:'3 open questions'},{t:'Observational predictions',s:'Draft complete'},{t:'Nature formatting',s:'Not started'}],
+    where:'Deriving boundary interaction terms for the subcritical regime — coupling between large-scale flow structures and boundary layer. Key insight: scale-dependent correction to H₀.',
+    questions:['Can boundary interactions predict S₈ tension simultaneously?','Signatures distinguishing from early dark energy?','Connection to fluid dynamics fundamentals?']},
+  boundary:{title:'Boundary Interaction Laws',meta:'Yesterday · 40%',hue:255,progress:40,
+    summary:'Framework connecting fluid dynamics boundary interactions to cosmological observables.',
+    threads:[{t:'Derivation notebook',s:'In progress'},{t:'Numerical simulations',s:'Planned'}],
+    where:'Building mathematical framework connecting boundary layer physics to observable quantities.',
+    questions:['What numerical resolution needed?','Closed-form solutions for subcritical case?']},
+  quantum:{title:'Quantum Cosmology',meta:'Last week · Early',hue:270,progress:15,
+    summary:'Quantum foundations for cosmological boundary conditions.',
+    threads:[{t:'Literature review',s:'In progress'}],
+    where:'Reviewing quantum cosmology frameworks for compatibility with boundary interaction approach.',questions:['Wheeler-DeWitt compatibility?']},
+  business:{title:'Launch Strategy',meta:'Active daily · Critical',hue:30,progress:72,
+    summary:'January 2026 launch via SoftBank. Coordinating T-Mobile and Deutsche Telekom.',
+    threads:[{t:'SoftBank rollout',s:'On track'},{t:'Carrier negotiations',s:'Active'},{t:'BYD manufacturing',s:'2 blockers'}],
+    where:'Finalizing SoftBank launch logistics. Two BYD blockers on device certification.',
+    questions:['BYD December deadline?','T-Mobile deal structure?']},
+  softbank:{title:'SoftBank Launch',meta:'Jan 2026 · 85%',hue:28,progress:85,
+    summary:'Retail launch across 5,000+ SoftBank stores. Certification in progress.',
+    threads:[{t:'Store training',s:'Complete'},{t:'Device cert',s:'In progress'},{t:'Marketing',s:'Review'}],
+    where:'Training materials done. Device certification is critical path — waiting on RF testing.',
+    questions:['RF testing timeline?','Marketing approval?']},
+  carrier:{title:'Carrier Partnerships',meta:'Negotiating',hue:35,progress:50,
+    summary:'T-Mobile and Deutsche Telekom distribution negotiations.',
+    threads:[{t:'T-Mobile terms',s:'Drafting'},{t:'DT Europe',s:'Early'}],
+    where:'T-Mobile deal terms being drafted. $60/device licensing baseline.',
+    questions:['Volume commitment?','European timeline?']},
+  byd:{title:'BYD / ODM',meta:'2 blockers',hue:32,progress:45,
+    summary:'BYD Electronics ODM relationship for device manufacturing.',
+    threads:[{t:'Production timeline',s:'2 issues'}],
+    where:'Component sourcing delay and firmware integration testing.',
+    questions:['Alternative suppliers?','Firmware test date?']},
+  design:{title:'Natural OS Design',meta:'Active · Evolving',hue:172,progress:60,
+    summary:'MindSpace paradigm, three-surface system, purpose-driven digital experiences.',
+    threads:[{t:'MindSpace architecture',s:'Active'},{t:'Three-surface system',s:'Spec done'},{t:'Island model',s:'Prototyping'}],
+    where:'Designing MindSpace home screen — mind map as navigable geography.',
+    questions:['Map metadata generation?','Default sheet state on unlock?']},
+  mindspace:{title:'MindSpace UX',meta:'Today · Core paradigm',hue:174,progress:50,
+    summary:'Context-driven workspaces replacing apps, organized around human purposes.',
+    threads:[{t:'Spatial navigation',s:'Designing'},{t:'TOM metadata',s:'New'},{t:'Zoom semantics',s:'In progress'}],
+    where:'Brainstorming mind map home screen — atmospheric glows, zoom-to-resolve, half-sheet.',
+    questions:['Metadata from conversations?','Color system?']},
+  surfaces:{title:'Three Surfaces',meta:'Spec complete',hue:168,progress:80,
+    summary:'Island, Chat/GenUI, Agent Box — Natural OS interaction surfaces.',
+    threads:[{t:'Surface transitions',s:'Designing'}],
+    where:'Spec complete. Working on transition animations.',questions:['Relation to MindSpace navigation?']},
+  personal:{title:'Personal',meta:'Background',hue:90,progress:0,
+    summary:'Personal interests and reading.',threads:[{t:'Reading list',s:'3 books'}],where:'',questions:[]},
+};
+nodes.forEach(n=>{if(!nodeData[n.id])nodeData[n.id]={title:n.label,meta:'',hue:n.hue,progress:0,summary:'',threads:[],where:'',questions:[]}});
+
+const regionCenters={physics:{x:280,y:340},business:{x:960,y:360},design:{x:450,y:800},personal:{x:880,y:800}};
+const regionNames={physics:'Physics',business:'Launch',design:'Design',personal:'Personal'};
+
+// ===== STATE =====
+let cam={x:620,y:540,z:0.48};
+let sheetState='peek';
+let activeId=null;
+let focusedRegion=null;
+let isFullMode=false;
+// Store camera before entering full mode so we can decide where to go on dismiss
+let preFullCam=null;
+
+const world=document.getElementById('world');
+const vp=document.getElementById('viewport');
+const sheet=document.getElementById('sheet');
+const regionLabel=document.getElementById('regionLabel');
+const zoomThumb=document.getElementById('zoomThumb');
+const zoomIndicator=document.getElementById('zoomIndicator');
+const beacon=document.getElementById('tomBeacon');
+
+// ===== CREATE DOM NODES =====
+nodes.forEach(n=>{
+  const el=document.createElement('div');
+  el.className='tom invisible';
+  el.dataset.id=n.id;el.dataset.tier=n.tier;
+  el.style.left=n.x+'px';el.style.top=n.y+'px';
+  const hsl=`hsl(${n.hue},65%,55%)`;
+  const hsla=a=>`hsla(${n.hue},65%,50%,${a})`;
+  let inner='<div class="tom-core">';
+  if(n.temp>0.6){
+    const hs=30+n.temp*50;
+    inner+=`<div class="tom-halo" style="width:${hs}px;height:${hs}px;margin:-${hs/2}px 0 0 -${hs/2}px;background:radial-gradient(circle,${hsla(0.15)} 0%,transparent 70%);animation-delay:${Math.random()*2}s"></div>`;
+  }
+  if(n.temp>0.4){
+    const rs=20+n.temp*25;
+    inner+=`<div class="tom-ring" style="width:${rs}px;height:${rs}px;margin:-${rs/2}px 0 0 -${rs/2}px;background:radial-gradient(circle,${hsla(0.12)} 0%,transparent 60%);animation-delay:${Math.random()*3}s"></div>`;
+  }
+  const dop=0.3+n.temp*0.7;
+  const sh=n.temp>0.7?`0 0 ${n.temp*20}px ${n.temp*5}px ${hsla(0.5)}`:n.temp>0.3?`0 0 ${n.temp*12}px ${n.temp*3}px ${hsla(0.3)}`:`0 0 4px 1px ${hsla(0.15)}`;
+  inner+=`<div class="tom-dot" style="width:${n.size}px;height:${n.size}px;background:${hsl};opacity:${dop};box-shadow:${sh}"></div></div>`;
+  const ls=n.tier===0?28:n.tier===1?17:14;
+  const lo=n.tier===0?0.6:n.tier===1?0.45:0.35;
+  inner+=`<div class="tom-label" style="font-size:${ls}px;color:rgba(232,230,225,${lo})">${n.label}</div>`;
+  el.dataset.baseSize=ls;
+  el.dataset.baseOpacity=lo;
+  el.innerHTML=inner;
+  el.addEventListener('click',e=>{e.stopPropagation();handleNodeTap(n)});
+  world.appendChild(el);
+});
+
+// Nebula — two layers
+const nebulaCtx=document.getElementById('nebulaCanvas').getContext('2d');
+const nebulaDeepCtx=document.getElementById('nebulaDeepCanvas').getContext('2d');
+
+function renderNebula(){
+  nebulaCtx.clearRect(0,0,1400,1400);
+  nebulaDeepCtx.clearRect(0,0,1400,1400);
+
+  nodes.forEach(n=>{
+    if(n.temp<0.1)return;
+
+    if(n.tier===0){
+      // Region glows — large, soft, always visible
+      // These define the "atmosphere" you see at home zoom
+      for(let i=0;i<5;i++){
+        const r=(120+n.temp*180)*(1+i*0.5);
+        const a=n.temp*0.035*(1-i*0.18);
+        const g=nebulaCtx.createRadialGradient(n.x,n.y,0,n.x,n.y,r);
+        g.addColorStop(0,`hsla(${n.hue},55%,40%,${a})`);
+        g.addColorStop(0.4,`hsla(${n.hue},45%,30%,${a*0.5})`);
+        g.addColorStop(1,'transparent');
+        nebulaCtx.fillStyle=g;
+        nebulaCtx.fillRect(n.x-r,n.y-r,r*2,r*2);
+      }
+    } else {
+      // Deeper node glows — rendered to separate canvas that fades in
+      const layers=n.tier===1?3:2;
+      for(let i=0;i<layers;i++){
+        const r=(50+n.temp*100)*(1+i*0.6);
+        const a=n.temp*0.04*(1-i*0.2);
+        const g=nebulaDeepCtx.createRadialGradient(n.x,n.y,0,n.x,n.y,r);
+        g.addColorStop(0,`hsla(${n.hue},60%,45%,${a})`);
+        g.addColorStop(0.5,`hsla(${n.hue},50%,35%,${a*0.4})`);
+        g.addColorStop(1,'transparent');
+        nebulaDeepCtx.fillStyle=g;
+        nebulaDeepCtx.fillRect(n.x-r,n.y-r,r*2,r*2);
+      }
+    }
+  });
+}
+renderNebula();
+
+// Connections
+const connCtx=document.getElementById('connectionCanvas').getContext('2d');
+function renderConnections(){
+  connCtx.clearRect(0,0,1400,1400);
+  conns.forEach(([fid,tid,str])=>{
+    const f=nodes.find(n=>n.id===fid),t=nodes.find(n=>n.id===tid);
+    if(!f||!t)return;
+    const a=str*0.12;if(a<0.01)return;
+    connCtx.beginPath();connCtx.moveTo(f.x,f.y);
+    const mx=(f.x+t.x)/2+(Math.random()-0.5)*20;
+    const my=(f.y+t.y)/2+(Math.random()-0.5)*20;
+    connCtx.quadraticCurveTo(mx,my,t.x,t.y);
+    connCtx.strokeStyle=`hsla(${f.hue},40%,50%,${a})`;
+    connCtx.lineWidth=0.5+str;connCtx.stroke();
+  });
+}
+renderConnections();
+
+// ===== CAMERA =====
+function applyCamera(animate=true){
+  if(animate)world.classList.remove('dragging');else world.classList.add('dragging');
+  const vw=vp.clientWidth,vh=vp.clientHeight;
+  const tx=vw/2-cam.x*cam.z,ty=vh/2-cam.y*cam.z;
+  world.style.transform=`translate(${tx}px,${ty}px) scale(${cam.z})`;
+  world.style.transformOrigin='0 0';
+  updateVisibility();updateZoomThumb();updateRegionLabel();
+}
+function animateTo(x,y,z){cam.x=x;cam.y=y;cam.z=z;applyCamera(true)}
+
+function updateVisibility(){
+  const labelScale = Math.min(1.5, 0.55 / cam.z + 0.45);
+
+  // Fade deep nebula and connections with zoom
+  // Invisible at home (z≤0.5), fully visible by z=0.9
+  const deepOp = Math.max(0, Math.min(1, (cam.z - 0.5) / 0.4));
+  document.getElementById('nebulaDeepCanvas').style.opacity = deepOp;
+  document.getElementById('connectionCanvas').style.opacity = deepOp * 0.8;
+
+  document.querySelectorAll('.tom').forEach(el=>{
+    const tier=+el.dataset.tier;
+    const id=el.dataset.id;
+    let op;
+
+    if(tier===0){
+      // Always visible, but at home zoom they should feel softer/larger
+      op=1;
+    } else if(tier===1){
+      // Appear between z=0.65 and z=0.9
+      op=Math.max(0, Math.min(1, (cam.z - 0.65) / 0.25));
+    } else {
+      // Appear between z=1.1 and z=1.5
+      op=Math.max(0, Math.min(1, (cam.z - 1.1) / 0.4));
+    }
+
+    if(op<=0.01){el.classList.add('invisible')}
+    else{el.classList.remove('invisible');el.style.opacity=op}
+
+    // Dynamic label sizing
+    const label=el.querySelector('.tom-label');
+    if(!label)return;
+    const base=parseFloat(el.dataset.baseSize)||14;
+    let size=base;
+
+    if(el.classList.contains('active')) size=base*1.3;
+    else if(el.classList.contains('adjacent')) size=base*1.1;
+
+    size=Math.round(size*labelScale);
+    label.style.fontSize=size+'px';
+
+    // Tier 0 at home zoom: labels brighter and dots softer
+    if(tier===0){
+      const dot=el.querySelector('.tom-dot');
+      if(cam.z<0.6){
+        // Home state: label is the primary element, dot recedes
+        label.style.color='rgba(232,230,225,0.7)';
+        if(dot) dot.style.opacity='0.4';
+      } else {
+        // Zoomed in: restore normal
+        label.style.color=`rgba(232,230,225,${el.dataset.baseOpacity})`;
+        if(dot) dot.style.opacity='';
+      }
+    }
+  });
+}
+
+function setActiveNode(id){
+  // Clear previous
+  document.querySelectorAll('.tom.active,.tom.adjacent').forEach(el=>{
+    el.classList.remove('active','adjacent');
+    const label=el.querySelector('.tom-label');
+    if(label) label.style.color=`rgba(232,230,225,${el.dataset.baseOpacity})`;
+  });
+  if(!id)return;
+
+  // Set active
+  const activeEl=document.querySelector(`.tom[data-id="${id}"]`);
+  if(activeEl) activeEl.classList.add('active');
+
+  // Set adjacent
+  const adjIds=getAdjacentIds(id);
+  adjIds.forEach(adjId=>{
+    const adjEl=document.querySelector(`.tom[data-id="${adjId}"]`);
+    if(adjEl) adjEl.classList.add('adjacent');
+  });
+}
+
+function updateZoomThumb(){
+  const pct=(cam.z-0.3)/(2.2-0.3);
+  zoomThumb.style.top=((1-pct)*48)+'px';
+}
+function updateRegionLabel(){
+  if(cam.z>0.6&&!isFullMode){
+    let c=null,d=Infinity;
+    for(const[r,ct]of Object.entries(regionCenters)){const dd=Math.hypot(cam.x-ct.x,cam.y-ct.y);if(dd<d){d=dd;c=r}}
+    focusedRegion=c;
+    if(d<350){regionLabel.textContent=regionNames[c];regionLabel.classList.add('visible')}
+    else regionLabel.classList.remove('visible');
+  }else{regionLabel.classList.remove('visible')}
+}
+
+// ===== FIND ADJACENT NODES =====
+function getAdjacentIds(id){
+  const adj=new Set();
+  conns.forEach(([a,b,str])=>{
+    if(str<0.2)return; // skip very weak
+    if(a===id)adj.add(b);
+    if(b===id)adj.add(a);
+  });
+  return adj;
+}
+
+// ===== NODE TAP =====
+function handleNodeTap(n){
+  activeId=n.id;
+  setActiveNode(n.id);
+  let tz=n.tier===0?0.85:n.tier===1?1.4:1.8;
+  if(cam.z>=tz)tz=cam.z;
+  animateTo(n.x,n.y+40,tz);
+  showPreview(n.id);
+  setSheetState('half');
+}
+function quickNav(id){const n=nodes.find(nn=>nn.id===id);if(n)handleNodeTap(n)}
+
+// ===== HOME CAMERA — fixed, always identical =====
+const HOME = {x:620, y:540, z:0.48};
+
+function goHome(){
+  animateTo(HOME.x, HOME.y, HOME.z);
+  focusedRegion=null;
+  if(sheetState==='half'){setSheetState('peek')}
+  setActiveNode(null);
+}
+
+// ===== VIEWPORT TAP / DOUBLE-TAP =====
+let lastTapTime=0;
+let lastTapX=0, lastTapY=0;
+
+vp.addEventListener('click',e=>{
+  if(e.target.closest('.tom')||e.target.closest('.half-sheet'))return;
+  if(dragMoved)return;
+
+  const now=Date.now();
+  const dx=Math.abs(e.clientX-lastTapX);
+  const dy=Math.abs(e.clientY-lastTapY);
+  const isDoubleTap=(now-lastTapTime<400)&&dx<30&&dy<30;
+
+  lastTapTime=now;
+  lastTapX=e.clientX;
+  lastTapY=e.clientY;
+
+  if(isDoubleTap){
+    // Double-tap: if zoomed in, go home. If at home, zoom into tapped area.
+    const isHome=Math.abs(cam.z-HOME.z)<0.1&&Math.abs(cam.x-HOME.x)<50&&Math.abs(cam.y-HOME.y)<50;
+    if(isHome){
+      // Zoom into tapped area
+      const vw=vp.clientWidth,vh=vp.clientHeight,rect=vp.getBoundingClientRect();
+      const wx=cam.x+(e.clientX-rect.left-vw/2)/cam.z;
+      const wy=cam.y+(e.clientY-rect.top-vh/2)/cam.z;
+      animateTo(wx,wy,0.85);
+    }else{
+      goHome();
+    }
+    lastTapTime=0; // reset so triple-tap doesn't fire
+    return;
+  }
+
+  // Single tap: zoom in one step toward tap point
+  const vw=vp.clientWidth,vh=vp.clientHeight,rect=vp.getBoundingClientRect();
+  const wx=cam.x+(e.clientX-rect.left-vw/2)/cam.z;
+  const wy=cam.y+(e.clientY-rect.top-vh/2)/cam.z;
+  const step=cam.z<0.6?0.85:cam.z<1.1?1.4:cam.z<1.7?1.8:cam.z;
+  if(step>cam.z)animateTo(wx,wy,step);
+});
+
+// ===== DRAG =====
+let isDrag=false,dragMoved=false,dsx=0,dsy=0,csx=0,csy=0;
+vp.addEventListener('mousedown',e=>{
+  if(e.target.closest('.tom')||e.target.closest('.half-sheet'))return;
+  isDrag=true;dragMoved=false;dsx=e.clientX;dsy=e.clientY;csx=cam.x;csy=cam.y;
+  world.classList.add('dragging');
+});
+window.addEventListener('mousemove',e=>{
+  if(!isDrag)return;
+  const dx=e.clientX-dsx,dy=e.clientY-dsy;
+  if(Math.abs(dx)>3||Math.abs(dy)>3)dragMoved=true;
+  cam.x=csx-dx/cam.z;cam.y=csy-dy/cam.z;applyCamera(false);
+});
+window.addEventListener('mouseup',()=>{isDrag=false;world.classList.remove('dragging')});
+
+let touchDrag=false;
+vp.addEventListener('touchstart',e=>{
+  if(e.target.closest('.tom')||e.target.closest('.half-sheet'))return;
+  if(e.touches.length===1){
+    touchDrag=true;dragMoved=false;dsx=e.touches[0].clientX;dsy=e.touches[0].clientY;
+    csx=cam.x;csy=cam.y;world.classList.add('dragging');
+  }
+},{passive:true});
+vp.addEventListener('touchmove',e=>{
+  if(e.touches.length===2){touchDrag=false;handlePinch(e);return}
+  if(!touchDrag||e.touches.length!==1)return;
+  const dx=e.touches[0].clientX-dsx,dy=e.touches[0].clientY-dsy;
+  if(Math.abs(dx)>3||Math.abs(dy)>3)dragMoved=true;
+  cam.x=csx-dx/cam.z;cam.y=csy-dy/cam.z;applyCamera(false);
+},{passive:true});
+vp.addEventListener('touchend',()=>{touchDrag=false;world.classList.remove('dragging')},{passive:true});
+
+// Scroll zoom with snap-to-home
+let snapTimeout=null;
+vp.addEventListener('wheel',e=>{
+  e.preventDefault();
+  const vw=vp.clientWidth,vh=vp.clientHeight,rect=vp.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const wx=cam.x+(mx-vw/2)/cam.z,wy=cam.y+(my-vh/2)/cam.z;
+  const f=e.deltaY<0?1.12:0.89;
+  let nz=Math.max(0.3,Math.min(2.2,cam.z*f));
+  cam.x=wx-(mx-vw/2)/nz;cam.y=wy-(my-vh/2)/nz;cam.z=nz;
+  applyCamera(false);
+
+  // Snap to home when close to home zoom and user stops scrolling
+  clearTimeout(snapTimeout);
+  if(Math.abs(cam.z-HOME.z)<0.08){
+    snapTimeout=setTimeout(()=>goHome(),250);
+  }
+},{passive:false});
+
+let lastPinch=0;
+function handlePinch(e){
+  const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  if(lastPinch===0){lastPinch=d;return}
+  const scale=d/lastPinch;lastPinch=d;
+  const vw=vp.clientWidth,vh=vp.clientHeight;
+  const cx=(e.touches[0].clientX+e.touches[1].clientX)/2;
+  const cy=(e.touches[0].clientY+e.touches[1].clientY)/2;
+  const rect=vp.getBoundingClientRect();
+  const wx=cam.x+(cx-rect.left-vw/2)/cam.z,wy=cam.y+(cy-rect.top-vh/2)/cam.z;
+  let nz=Math.max(0.3,Math.min(2.2,cam.z*scale));
+  cam.x=wx-(cx-rect.left-vw/2)/nz;cam.y=wy-(cy-rect.top-vh/2)/nz;cam.z=nz;
+  applyCamera(false);
+}
+vp.addEventListener('touchend',()=>{lastPinch=0},{passive:true});
+
+// ===== TOM BEACON =====
+function showBeacon(id){
+  const d=nodeData[id];
+  const n=nodes.find(nn=>nn.id===id);
+  if(!d||!n)return;
+
+  const hsl=`hsl(${d.hue},65%,55%)`;
+  const hsla=a=>`hsla(${d.hue},65%,50%,${a})`;
+
+  // Dot and halo
+  document.getElementById('beaconDot').style.background=hsl;
+  document.getElementById('beaconDot').style.boxShadow=`0 0 14px 3px ${hsla(0.5)}`;
+  document.getElementById('beaconHalo').style.background=`radial-gradient(circle,${hsla(0.25)} 0%,transparent 70%)`;
+
+  // Title
+  document.getElementById('beaconTitle').textContent=d.title;
+
+  // Circular progress
+  const circ=75.4; // 2π×12
+  const offset=circ*(1-d.progress/100);
+  const bpFill=document.getElementById('bpFill');
+  bpFill.style.stroke=hsl;
+  bpFill.style.strokeDashoffset=circ; // reset
+  document.getElementById('beaconPct').textContent=d.progress+'%';
+
+  // Pill border glow
+  beacon.style.borderColor=hsla(0.12);
+
+  // Tether
+  const tether=document.getElementById('beaconTether');
+  tether.style.background=`linear-gradient(to bottom, ${hsla(0.25)}, ${hsla(0.05)} 70%, transparent)`;
+  tether.style.height='0px';
+  tether.style.opacity='0';
+
+  // Sheet glow
+  document.getElementById('sheetGlow').style.background=
+    `linear-gradient(to bottom, ${hsla(0.06)} 0%, transparent 100%)`;
+  document.getElementById('sheetGlowLine').style.background=
+    `linear-gradient(to right, transparent, ${hsla(0.35)}, transparent)`;
+
+  // Rise
+  beacon.classList.add('rising');
+
+  // Animate progress ring and grow tether after beacon arrives
+  setTimeout(()=>{
+    bpFill.style.strokeDashoffset=offset;
+
+    // Position and grow tether
+    const frame=document.getElementById('phoneFrame');
+    const frameRect=frame.getBoundingClientRect();
+    const beaconRect=beacon.getBoundingClientRect();
+    const sheetRect=sheet.getBoundingClientRect();
+    const gap=sheetRect.top-beaconRect.bottom;
+    tether.style.top=(beaconRect.bottom-frameRect.top)+'px';
+    tether.style.height=Math.max(0,gap+4)+'px';
+    tether.classList.add('visible');
+  },200);
+}
+
+function hideBeacon(){
+  // Collapse tether
+  const tether=document.getElementById('beaconTether');
+  tether.style.height='0px';
+  tether.classList.remove('visible');
+
+  // Then recede beacon
+  setTimeout(()=>{
+    beacon.classList.remove('rising');
+  },120);
+}
+
+// ===== SHEET STATE =====
+function setSheetState(s){
+  const prevState=sheetState;
+  sheetState=s;
+  sheet.setAttribute('data-state',s);
+  document.getElementById('quickActions').style.display=s==='peek'?'flex':'none';
+
+  if(s==='full'){
+    isFullMode=true;
+
+    // Save camera state
+    preFullCam={...cam};
+
+    // Blur & dim the map
+    vp.classList.add('blurred');
+    zoomIndicator.classList.add('hidden');
+    regionLabel.classList.remove('visible');
+
+    // Center camera on the active node (visible behind blur)
+    const n=nodes.find(nn=>nn.id===activeId);
+    if(n) animateTo(n.x,n.y,cam.z);
+
+    // Show beacon rising to top
+    showBeacon(activeId);
+
+    // Fill progress
+    const d=nodeData[activeId];
+    if(d){
+      setTimeout(()=>{document.getElementById('fullFill').style.width=d.progress+'%'},100);
+    }
+  }
+  else if(prevState==='full'&&s==='half'){
+    // DISMISSING — recede beacon back into map
+    isFullMode=false;
+    vp.classList.remove('blurred');
+    zoomIndicator.classList.remove('hidden');
+
+    // Animate camera to center on the node at a good zoom showing neighbors
+    const n=nodes.find(nn=>nn.id===activeId);
+    if(n){
+      // Pick zoom that shows adjacent nodes well
+      const adjZoom=n.tier===0?0.85:n.tier===1?1.1:1.4;
+      // Slight delay so the unblur happens first
+      setTimeout(()=>{
+        animateTo(n.x,n.y+30,adjZoom);
+      },50);
+    }
+
+    hideBeacon();
+  }
+  else if(s==='peek'){
+    isFullMode=false;
+    vp.classList.remove('blurred');
+    zoomIndicator.classList.remove('hidden');
+    beacon.classList.remove('rising');
+    setActiveNode(null);
+  }
+}
+
+function showPreview(id){
+  const d=nodeData[id];if(!d)return;
+  const circ=113.1;
+  const offset=circ*(1-d.progress/100);
+  const rf=document.getElementById('ringFill');
+  rf.style.stroke=`hsl(${d.hue},60%,55%)`;
+  rf.style.strokeDashoffset=circ;
+  setTimeout(()=>{rf.style.strokeDashoffset=offset},50);
+  document.getElementById('previewPct').textContent=d.progress+'%';
+  document.getElementById('previewTitle').textContent=d.title;
+  document.getElementById('previewMeta').textContent=d.meta;
+  document.getElementById('previewThreads').innerHTML=d.threads.map(t=>`
+    <div class="preview-thread" onclick="setSheetState('full')">
+      <div><div class="thread-title">${t.t}</div><div class="thread-sub">${t.s}</div></div>
+      <div class="thread-arrow">→</div>
+    </div>`).join('');
+
+  document.getElementById('fullPct').textContent=d.progress+'%';
+  document.getElementById('fullFill').style.width='0%';
+  document.getElementById('fullFill').style.background=`hsl(${d.hue},60%,55%)`;
+  document.getElementById('fullWhere').textContent=d.where||'No recent activity.';
+  document.getElementById('fullQuestions').innerHTML=(d.questions||[]).map(q=>
+    `<div class="open-q" style="border-color:hsl(${d.hue},45%,45%)">${q}</div>`).join('');
+}
+
+// Sheet drag
+let sheetDragY=0,isSheetDrag=false;
+sheet.addEventListener('touchstart',e=>{sheetDragY=e.touches[0].clientY;isSheetDrag=true;sheet.style.transition='none'},{passive:true});
+sheet.addEventListener('touchend',e=>{
+  if(!isSheetDrag)return;isSheetDrag=false;sheet.style.transition='';
+  const dy=e.changedTouches[0].clientY-sheetDragY;
+  if(sheetState==='peek'&&dy<-50&&activeId)setSheetState('half');
+  else if(sheetState==='peek'&&dy>40) goHome(); // swipe down from peek → home
+  else if(sheetState==='half'&&dy<-80)setSheetState('full');
+  else if(sheetState==='half'&&dy>60){setSheetState('peek');goHome()}
+  else if(sheetState==='full'&&dy>80)setSheetState('half');
+},{passive:true});
+
+// Mouse: click sheet handle area to dismiss from full
+sheet.querySelector('.sheet-handle').addEventListener('click',()=>{
+  if(sheetState==='full')setSheetState('half');
+});
+
+// Region label tap → zoom out to home
+regionLabel.addEventListener('click',()=>{
+  goHome();
+});
+
+// ESC — progressive back
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    if(sheetState==='full')setSheetState('half');
+    else if(sheetState==='half'){setSheetState('peek');goHome()}
+    else goHome();
+  }
+});
+
+// Breathing
+function breathe(){
+  const t=Date.now()/1000;
+  const nc=document.getElementById('nebulaCanvas');
+  const s=1+Math.sin(t*0.3)*0.02;
+  const dx=Math.sin(t*0.2)*3,dy=Math.cos(t*0.15)*3;
+  nc.style.transform=`scale(${s}) translate(${dx}px,${dy}px)`;
+  requestAnimationFrame(breathe);
+}
+breathe();
+
+applyCamera(false);
+</script>
+</body>
+</html>
