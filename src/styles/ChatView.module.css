@@ -1,0 +1,81 @@
+.layout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.header {
+  height: var(--header-height);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-primary);
+  flex-shrink: 0;
+}
+
+.homeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+  font-size: 18px;
+  color: var(--text-secondary);
+}
+.homeBtn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-primary);
+  max-width: 300px;
+}
+
+/* Push everything after this to the right — nothing needed here,
+   home+title+collapse all stay on the left */
+
+
+.body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  position: relative;
+}
+
+/* Full-screen drop overlay when dragging a cross-chat marker */
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(99, 102, 241, 0.06);
+  pointer-events: none;
+}
+
+.dropOverlayInner {
+  padding: 20px 32px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  background: var(--bg-primary);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 500;
+}

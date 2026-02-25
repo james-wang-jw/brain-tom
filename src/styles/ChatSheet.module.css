@@ -1,0 +1,110 @@
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  will-change: height;
+  transition: height 300ms ease;
+  overflow: hidden;
+}
+.sheet[data-state="closed"] {
+  height: 0;
+  pointer-events: none;
+}
+.sheet[data-state="half"] {
+  height: 55dvh;
+}
+.sheet[data-state="full"] {
+  height: 100dvh;
+  border-radius: 0;
+}
+.sheet.dragging {
+  transition: none;
+}
+
+.handle {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  flex-shrink: 0;
+  touch-action: none;
+}
+.handle:active {
+  cursor: grabbing;
+}
+.handlePill {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--text-muted);
+  opacity: 0.4;
+}
+
+.chatHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.chatTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--text-muted);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.closeBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(99, 102, 241, 0.06);
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-lg);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.dropOverlayText {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--accent);
+}

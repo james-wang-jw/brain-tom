@@ -1,0 +1,47 @@
+.marker {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  width: 100%;
+  text-align: left;
+}
+.marker:hover {
+  background: var(--bg-hover);
+}
+
+.active {
+  background: var(--accent-subtle);
+}
+
+.icon {
+  font-size: 14px;
+  color: var(--accent);
+  flex-shrink: 0;
+  font-weight: 700;
+  margin-top: 1px;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.time {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}

@@ -1,0 +1,58 @@
+.marker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 6px 14px;
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-border);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--accent);
+  cursor: default;
+  position: relative;
+}
+
+.icon {
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.label {
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.labelInput {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent);
+  color: var(--accent);
+  font-size: 13px;
+  padding: 0;
+  width: 250px;
+  outline: none;
+}
+
+.deleteBtn {
+  opacity: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+.deleteBtn:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--danger);
+}
+.marker:hover .deleteBtn { opacity: 1; }

@@ -1,0 +1,204 @@
+.viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+  position: relative;
+  user-select: none;
+  touch-action: none;
+}
+.viewport.grabbing {
+  cursor: grabbing;
+}
+
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.connectionSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* Must not be 0 — SVG spec disables rendering when width or height is 0 */
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.connectionLine {
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  animation: lineAppear 400ms ease backwards;
+}
+
+@keyframes lineAppear {
+  from {
+    stroke-dashoffset: 100;
+    opacity: 0;
+  }
+  to {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+}
+
+.node {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--bg-primary);
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), opacity 200ms ease;
+  box-shadow: var(--card-shadow);
+  z-index: 1;
+  /* Center the node on its position */
+  transform: translate(-50%, -50%);
+  animation: nodeAppear 300ms ease backwards;
+}
+.node:hover {
+  border-color: var(--accent);
+  box-shadow: var(--card-shadow-hover);
+  z-index: 2;
+}
+
+.nodeActive {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), var(--card-shadow-hover);
+  z-index: 3;
+}
+
+.nodeIcon {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.nodeLabel {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+  pointer-events: none;
+  line-height: 1.3;
+  width: max-content;
+  max-width: 180px;
+  word-wrap: break-word;
+  white-space: normal;
+}
+
+@keyframes nodeAppear {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+.clusterNode {
+  position: absolute;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--accent-subtle, rgba(59, 130, 246, 0.1));
+  border: 2px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  transition: opacity 200ms ease, box-shadow var(--transition-fast);
+  box-shadow: var(--card-shadow);
+  z-index: 1;
+  animation: clusterAppear 300ms ease backwards;
+}
+.clusterNode:hover {
+  box-shadow: var(--card-shadow-hover);
+  z-index: 2;
+}
+
+.clusterCount {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+}
+
+.clusterLabel {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-align: center;
+  pointer-events: none;
+  line-height: 1.3;
+  width: max-content;
+  max-width: 180px;
+  word-wrap: break-word;
+  white-space: normal;
+}
+
+@keyframes clusterAppear {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+.emptyState {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.emptyIcon {
+  font-size: 48px;
+  opacity: 0.2;
+  margin-bottom: 12px;
+}
+.emptyText {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.emptyHint {
+  font-size: 13px;
+}
