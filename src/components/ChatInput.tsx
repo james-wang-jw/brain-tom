@@ -28,7 +28,7 @@ function buildContextPrefix(contexts: AttachedContext[]): string {
   return parts.join('\n\n') + '\n\n---\n\n';
 }
 
-async function doSend(text: string, attachedContexts: AttachedContext[] = []) {
+export async function doSend(text: string, attachedContexts: AttachedContext[] = []) {
   const state = useChatStore.getState();
   const { currentChat, markers } = state;
   if (!text || state.isStreaming || !currentChat) return;

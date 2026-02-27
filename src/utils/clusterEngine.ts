@@ -6,7 +6,7 @@ import type { TOMMarker } from '../types/index.ts';
 const CLUSTER_JOIN_THRESHOLD = 0.85;
 const CLUSTER_FORMATION_THRESHOLD = 0.80;
 const CLUSTER_UPDATE_THRESHOLD = 0.65;
-const MIN_CLUSTER_SIZE = 3;
+const MIN_CLUSTER_SIZE = 2;
 
 export function computeCentroid(memberIds: string[]): number[] {
   const vecs: number[][] = [];

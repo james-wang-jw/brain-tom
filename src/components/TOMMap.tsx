@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import type { TOMMarker, ClusterNode } from '../types/index.ts';
 import type { Position } from '../utils/forceLayout.ts';
 import { getEmbedding, cosineSimilarity } from '../utils/embeddingStore.ts';
-import { EMBEDDING_THRESHOLD } from '../api/relevance.ts';
+import { MARKER_SIMILARITY_THRESHOLD } from '../api/relevance.ts';
 import styles from '../styles/TOMMap.module.css';
 
 interface TOMMapProps {
@@ -12,6 +12,7 @@ interface TOMMapProps {
   chatTitleMap: Map<string, string>;
   onMarkerClick: (marker: TOMMarker) => void;
   onMarkerDragStart: (e: React.DragEvent, marker: TOMMarker) => void;
+  onClusterClick?: (cluster: ClusterNode) => void;
   locateMarkerId?: string | null;
   /** Incremented each time the layout recomputes — triggers camera re-center */
   layoutVersion?: number;
@@ -28,6 +29,7 @@ export default function TOMMap({
   chatTitleMap,
   onMarkerClick,
   onMarkerDragStart,
+  onClusterClick,
   locateMarkerId,
   layoutVersion = 0,
   visibleHeightFraction = 1,
@@ -102,8 +104,9 @@ export default function TOMMap({
   // --- Pointer handlers for panning ---
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    // Ignore if on a marker node
-    if ((e.target as HTMLElement).closest(`.${styles.node}`)) return;
+    // Ignore if on a marker node or cluster node
+    if ((e.target as HTMLElement).closest(`.${styles.node}`) ||
+        (e.target as HTMLElement).closest(`.${styles.clusterNode}`)) return;
 
     pointerStart.current = { x: e.clientX, y: e.clientY, panX, panY };
     didPan.current = false;
@@ -235,11 +238,16 @@ export default function TOMMap({
     return ids;
   }, [clusters]);
 
-  // Cluster click handler: zoom to 1.0 centered on cluster position
-  const handleClusterClick = useCallback((clusterId: string) => {
+  // Cluster click handler
+  const handleClusterClick = useCallback((cluster: ClusterNode) => {
     if (didPan.current) return;
+    if (onClusterClick) {
+      onClusterClick(cluster);
+      return;
+    }
+    // Fallback: zoom to 1.0 centered on cluster position
     if (!clusterPositions || !viewportRef.current) return;
-    const pos = clusterPositions.get(clusterId);
+    const pos = clusterPositions.get(cluster.id);
     if (!pos) return;
 
     const vw = viewportRef.current.clientWidth;
@@ -249,7 +257,7 @@ export default function TOMMap({
     setPanX(vw / 2 - pos.x * targetZoom);
     setPanY(vh / 2 - pos.y * targetZoom);
     setZoom(targetZoom);
-  }, [clusterPositions, visibleHeightFraction]);
+  }, [onClusterClick, clusterPositions, visibleHeightFraction]);
 
   // Compute connection lines from active marker to related markers (similarity >= threshold)
   const connectionLines = useMemo(() => {
@@ -264,7 +272,7 @@ export default function TOMMap({
       const emb = getEmbedding(marker.id);
       if (!emb) continue;
       const sim = cosineSimilarity(activeEmb, emb);
-      if (sim >= EMBEDDING_THRESHOLD) {
+      if (sim >= MARKER_SIMILARITY_THRESHOLD) {
         lines.push({
           targetId: marker.id,
           x1: activePos.x,
@@ -295,7 +303,7 @@ export default function TOMMap({
         style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})` }}
       >
         {/* Connection lines from active marker to related markers */}
-        {connectionLines.length > 0 && (
+        {connectionLines.length > 0 && memberOpacity > 0 && (
           <svg className={styles.connectionSvg}>
             {connectionLines.map((line) => (
               <line
@@ -305,7 +313,7 @@ export default function TOMMap({
                 x2={line.x2}
                 y2={line.y2}
                 className={styles.connectionLine}
-                strokeOpacity={0 + (line.similarity - EMBEDDING_THRESHOLD) * 3}
+                strokeOpacity={memberOpacity * (0.15 + 0.85 * (line.similarity - MARKER_SIMILARITY_THRESHOLD) / (1 - MARKER_SIMILARITY_THRESHOLD))}
               />
             ))}
           </svg>
@@ -351,7 +359,7 @@ export default function TOMMap({
                 opacity: clusterOpacity,
                 pointerEvents: clusterOpacity <= 0.3 ? 'none' : undefined,
               }}
-              onClick={() => handleClusterClick(cluster.id)}
+              onClick={() => handleClusterClick(cluster)}
             >
               <span className={styles.clusterCount}>{cluster.memberIds.length}</span>
               <span className={styles.clusterLabel} style={labelScale > 1 ? { fontSize: 12 * labelScale } : undefined}>{cluster.label}</span>

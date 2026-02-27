@@ -156,6 +156,7 @@ export default function Settings({ open, onClose }: Props) {
       await deleteClusterFromDB(c.id);
     }
     setClustersCleared(true);
+    window.dispatchEvent(new Event('tom-clusters-cleared'));
     setTimeout(() => setClustersCleared(false), 2000);
   }, []);
 

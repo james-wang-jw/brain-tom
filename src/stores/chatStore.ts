@@ -34,6 +34,7 @@ interface ChatState {
   updateMarker: (markerId: string, updates: { label?: string; extendedContext?: string; messageIndex?: number }) => Promise<void>;
   deleteMarker: (markerId: string) => Promise<void>;
   editMarkerLabel: (markerId: string, newLabel: string) => Promise<void>;
+  replaceMessages: (messages: Message[]) => Promise<void>;
   deleteChatById: (chatId: string) => Promise<void>;
   clearAllData: () => Promise<void>;
   toggleSidebar: () => void;
@@ -190,6 +191,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const allMarkers = await db.getAllMarkers();
     set({ allMarkers });
+  },
+
+  replaceMessages: async (messages: Message[]) => {
+    const { currentChat } = get();
+    if (!currentChat) return;
+    const updated: Chat = {
+      ...currentChat,
+      messages,
+      updatedAt: Date.now(),
+    };
+    await db.saveChat(updated);
+    set({ currentChat: updated });
+    const allChats = await db.getAllChats();
+    set({ allChats });
   },
 
   deleteChatById: async (chatId: string) => {

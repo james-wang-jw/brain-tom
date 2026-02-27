@@ -5,10 +5,11 @@ import type { Position } from '../utils/forceLayout.ts';
 import { getAllCachedIds } from '../utils/embeddingStore.ts';
 import { recomputeClusters } from '../utils/clusterEngine.ts';
 import { requestClusterLabeling } from '../utils/clusterLabeler.ts';
-import { getAllClusters, saveClusters, deleteCluster as deleteClusterFromDB } from '../db/index.ts';
+import { getAllClusters, replaceAllClusters } from '../db/index.ts';
 import TOMMap from './TOMMap.tsx';
 import ChatSheet from './ChatSheet.tsx';
 import type { SheetState } from './ChatSheet.tsx';
+import SummarySheet from './SummarySheet.tsx';
 import UnifiedSearchInput from './UnifiedSearchInput.tsx';
 import Settings from './Settings.tsx';
 import type { TOMMarker, ClusterNode } from '../types/index.ts';
@@ -26,15 +27,21 @@ export default function VisualHomeScreen() {
   const [locateMarkerId, setLocateMarkerId] = useState<string | null>(null);
   const [autoSend, setAutoSend] = useState(false);
 
+  const [selectedMarker, setSelectedMarker] = useState<TOMMarker | null>(null);
+  const [selectedCluster, setSelectedCluster] = useState<ClusterNode | null>(null);
+  const [summaryState, setSummaryState] = useState<SheetState>('closed');
+
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [clusters, setClusters] = useState<ClusterNode[]>([]);
   const clustersRef = useRef<ClusterNode[]>([]);
+  const [clusterVersion, setClusterVersion] = useState(0);
 
   const prevMarkerIdsRef = useRef<Set<string>>(new Set());
   const embeddedCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const prevClusterMarkerIdsRef = useRef<Set<string>>(new Set());
   const prevClusterEmbeddedCountRef = useRef(0);
+  const [clustersLoaded, setClustersLoaded] = useState(false);
 
   const chatTitleMap = new Map(allChats.map((c) => [c.id, c.title]));
 
@@ -43,6 +50,19 @@ export default function VisualHomeScreen() {
     loadAllChats();
     loadAllMarkers();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Listen for cluster clear event from Settings
+  useEffect(() => {
+    const handler = () => {
+      setClusters([]);
+      clustersRef.current = [];
+      prevClusterMarkerIdsRef.current = new Set();
+      prevClusterEmbeddedCountRef.current = 0;
+      setClusterVersion(v => v + 1);
+    };
+    window.addEventListener('tom-clusters-cleared', handler);
+    return () => window.removeEventListener('tom-clusters-cleared', handler);
+  }, []);
 
   // Compute layout when markers change
   useEffect(() => {
@@ -135,14 +155,19 @@ export default function VisualHomeScreen() {
   // Load clusters from IDB on mount
   useEffect(() => {
     getAllClusters().then((stored) => {
-      setClusters(stored);
-      clustersRef.current = stored;
+      // Only apply IDB data if the recompute effect hasn't already produced clusters
+      if (clustersRef.current.length === 0) {
+        setClusters(stored);
+        clustersRef.current = stored;
+      }
+      setClustersLoaded(true);
     });
   }, []);
 
   // Recompute clusters when markers or embedding count change
   useEffect(() => {
     if (allMarkers.length === 0) return;
+    if (!clustersLoaded) return;
 
     const currentIds = new Set(allMarkers.map((m) => m.id));
     const cachedIds = getAllCachedIds();
@@ -179,17 +204,8 @@ export default function VisualHomeScreen() {
     setClusters(newClusters);
     clustersRef.current = newClusters;
 
-    // Persist to IDB
-    saveClusters(newClusters).then(async () => {
-      // Remove old clusters not in the new set
-      const newIds = new Set(newClusters.map((c) => c.id));
-      const oldClusters = await getAllClusters();
-      for (const old of oldClusters) {
-        if (!newIds.has(old.id)) {
-          await deleteClusterFromDB(old.id);
-        }
-      }
-    });
+    // Persist to IDB (atomic replace to prevent stale duplicates)
+    replaceAllClusters(newClusters);
 
     // Request labeling for clusters that need it
     if (needsLabeling.length > 0) {
@@ -201,12 +217,12 @@ export default function VisualHomeScreen() {
           });
           clustersRef.current = next;
           // Persist updated label
-          saveClusters(next);
+          replaceAllClusters(next);
           return next;
         });
       });
     }
-  }, [allMarkers]);
+  }, [allMarkers, clusterVersion, clustersLoaded]);
 
   // Compute cluster positions by averaging member positions
   const clusterPositions = useMemo(() => {
@@ -241,13 +257,54 @@ export default function VisualHomeScreen() {
     return () => window.removeEventListener('tom-attach-context', handler);
   }, []);
 
-  // Marker click: open sheet with that marker's chat and center on it
+  // Marker click: open summary sheet (don't center map — only center on "Open Chat")
   const handleMarkerClick = useCallback((marker: TOMMarker) => {
     setAutoSend(false);
-    setLocateMarkerId(marker.id);
-    setActiveChatId(marker.chatId);
+    setSelectedMarker(marker);
+    setSelectedCluster(null);
+    setSummaryState('half');
+    setSheetState('closed');
+    setActiveChatId(null);
+  }, []);
+
+  // Cluster click: open summary sheet with cluster view
+  const handleClusterClick = useCallback((cluster: ClusterNode) => {
+    setSelectedCluster(cluster);
+    setSelectedMarker(null);
+    setSummaryState('half');
+    setSheetState('closed');
+    setActiveChatId(null);
+  }, []);
+
+  // "Open Chat" from summary sheet — center map on the marker
+  const handleOpenChat = useCallback((chatId: string) => {
+    // Center on the marker that was selected before opening chat
+    if (selectedMarker) {
+      setLocateMarkerId(selectedMarker.id);
+      setTimeout(() => setLocateMarkerId(null), 500);
+    }
+    setSummaryState('closed');
+    setSelectedMarker(null);
+    setSelectedCluster(null);
+    setActiveChatId(chatId);
     setSheetState('half');
+  }, [selectedMarker]);
+
+  // Select related/member marker from summary
+  const handleSelectMarker = useCallback((marker: TOMMarker) => {
+    setSelectedMarker(marker);
+    setSelectedCluster(null);
+    setLocateMarkerId(marker.id);
     setTimeout(() => setLocateMarkerId(null), 500);
+  }, []);
+
+  // Summary sheet state change
+  const handleSummaryStateChange = useCallback((newState: SheetState) => {
+    setSummaryState(newState);
+    if (newState === 'closed') {
+      setSelectedMarker(null);
+      setSelectedCluster(null);
+    }
   }, []);
 
   // Marker drag start (for cross-chat context)
@@ -296,12 +353,13 @@ export default function VisualHomeScreen() {
     setAttachedContexts([]);
   }, []);
 
-  // Find active marker ID from the active chat
+  // Find active marker ID — prefer selected marker when summary is open
   const activeMarkerIds = allMarkers.filter((m) => m.chatId === activeChatId).map((m) => m.id);
-  const activeMarkerId = activeMarkerIds.length > 0 ? activeMarkerIds[activeMarkerIds.length - 1] : null;
+  const activeMarkerId = selectedMarker?.id
+    ?? (activeMarkerIds.length > 0 ? activeMarkerIds[activeMarkerIds.length - 1] : null);
 
-  // When sheet is half-open, the visible map area is the top 45% of the screen
-  const visibleHeightFraction = sheetState === 'half' ? 0.45 : 1;
+  // When either sheet is half-open, the visible map area is the top 45% of the screen
+  const visibleHeightFraction = (sheetState === 'half' || summaryState === 'half') ? 0.45 : 1;
 
   return (
     <div className={styles.container}>
@@ -312,6 +370,7 @@ export default function VisualHomeScreen() {
         chatTitleMap={chatTitleMap}
         onMarkerClick={handleMarkerClick}
         onMarkerDragStart={handleMarkerDragStart}
+        onClusterClick={handleClusterClick}
         locateMarkerId={locateMarkerId}
         layoutVersion={layoutVersion}
         visibleHeightFraction={visibleHeightFraction}
@@ -334,6 +393,17 @@ export default function VisualHomeScreen() {
         onRemoveContext={removeContext}
         onClearContexts={clearContexts}
         autoSend={autoSend}
+      />
+
+      <SummarySheet
+        marker={selectedMarker}
+        cluster={selectedCluster}
+        state={summaryState}
+        onStateChange={handleSummaryStateChange}
+        onOpenChat={handleOpenChat}
+        onSelectMarker={handleSelectMarker}
+        allMarkers={allMarkers}
+        chatTitleMap={chatTitleMap}
       />
 
       <button

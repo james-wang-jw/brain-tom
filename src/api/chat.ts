@@ -125,7 +125,7 @@ Append exactly one line at the very end of your response using ONE of these form
 [TOM_UPDATE: <new label> | <merged context combining old + new>]
 
 - **label**: A concise description (under 60 chars) of what the user is focused on, written from the user's perspective.
-- **context**: A rich semantic description (100-300 chars) that captures the user's focus, intent, key concepts, terminology, abbreviations (with expansions), related topics, and the specific question or problem being explored. This context is used for search matching — include synonyms, full forms of abbreviations, and related terms so the marker is discoverable from different angles.
+- **context**: A 1-2 sentence description of this moment from the user's perspective. Capture what the user is focused on, the specific question or problem, and key concepts. Write naturally but include related terms, synonyms, and full forms of abbreviations for discoverability.
 
 Examples of NEW marker:
 - [TOM: Realized API rate limits require caching layer | User is building a REST API that hits third-party rate limits. Exploring caching strategies: Redis, in-memory cache, HTTP cache headers. Key concern: balancing freshness vs performance for high-traffic endpoints.]

@@ -38,7 +38,7 @@ export default function MessageList() {
         ))}
 
         {isStreaming && streamingContent && (
-          <div style={{ marginBottom: 24 }} id={`msg-${messages.length}`}>
+          <div style={{ marginBottom: 10 }} id={`msg-${messages.length}`}>
             <div className={`${bubbleStyles.assistantCard} markdown-content`}>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{streamingContent}</ReactMarkdown>
             </div>

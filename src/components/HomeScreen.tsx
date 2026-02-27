@@ -26,7 +26,7 @@ export default function HomeScreen() {
   const navigate = useNavigate();
   const { allChats, allMarkers, loadAllChats, loadAllMarkers, deleteMarker, deleteChatById } =
     useChatStore();
-  const [mapView, setMapView] = useState(() => localStorage.getItem('tom-map-view') === 'true');
+  const [mapView, setMapView] = useState(() => localStorage.getItem('tom-map-view') !== 'false');
   const [viewMode, setViewMode] = useState<ViewMode>('recent');
   const [relevantMarkers, setRelevantMarkers] = useState<
     { marker: TOMMarker; reason: string }[]

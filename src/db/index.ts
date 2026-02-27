@@ -172,6 +172,16 @@ export async function saveClusters(clusters: ClusterNode[]): Promise<void> {
   await tx.done;
 }
 
+export async function replaceAllClusters(clusters: ClusterNode[]): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction('clusters', 'readwrite');
+  await tx.store.clear();
+  for (const cluster of clusters) {
+    await tx.store.put(cluster);
+  }
+  await tx.done;
+}
+
 // === Clear all data ===
 
 export async function clearAllData(): Promise<void> {

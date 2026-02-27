@@ -110,7 +110,9 @@ Return ONLY the JSON, no other text.`;
 
 // === Embedding-based search ===
 
-export const EMBEDDING_THRESHOLD = 0.77;
+export const EMBEDDING_THRESHOLD = 0.78;
+/** Threshold for marker-to-marker similarity (higher than context-to-marker) */
+export const MARKER_SIMILARITY_THRESHOLD = 0.85;
 
 export async function searchTOMsEmbedding(
   query: string,
