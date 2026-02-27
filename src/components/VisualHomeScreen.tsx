@@ -40,8 +40,9 @@ export default function VisualHomeScreen() {
   const embeddedCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const prevClusterMarkerIdsRef = useRef<Set<string>>(new Set());
-  const prevClusterEmbeddedCountRef = useRef(0);
+  const prevClusterEmbeddedIdsRef = useRef<Set<string>>(new Set());
   const [clustersLoaded, setClustersLoaded] = useState(false);
+  const [embeddedMarkerCount, setEmbeddedMarkerCount] = useState(0);
 
   const chatTitleMap = new Map(allChats.map((c) => [c.id, c.title]));
 
@@ -57,7 +58,7 @@ export default function VisualHomeScreen() {
       setClusters([]);
       clustersRef.current = [];
       prevClusterMarkerIdsRef.current = new Set();
-      prevClusterEmbeddedCountRef.current = 0;
+      prevClusterEmbeddedIdsRef.current = new Set();
       setClusterVersion(v => v + 1);
     };
     window.addEventListener('tom-clusters-cleared', handler);
@@ -135,6 +136,7 @@ export default function VisualHomeScreen() {
         const result = computeLayout(markerIds);
         setPositions(result.positions);
         embeddedCountRef.current = result.embeddedCount;
+        setEmbeddedMarkerCount(embeddedMarkers.length);
         setLayoutVersion((v) => v + 1);
       }
 
@@ -171,12 +173,11 @@ export default function VisualHomeScreen() {
 
     const currentIds = new Set(allMarkers.map((m) => m.id));
     const cachedIds = getAllCachedIds();
-    const markerIdSet = currentIds;
-    const embeddedCount = cachedIds.filter((id) => markerIdSet.has(id)).length;
+    const currentEmbeddedIds = new Set(cachedIds.filter((id) => currentIds.has(id)));
 
-    // Detect changes from last cluster computation
+    // Detect changes: new/removed markers + newly-embedded markers
     const prevIds = prevClusterMarkerIdsRef.current;
-    const prevEmbCount = prevClusterEmbeddedCountRef.current;
+    const prevEmbIds = prevClusterEmbeddedIdsRef.current;
 
     const changedIds = new Set<string>();
     for (const id of currentIds) {
@@ -185,20 +186,22 @@ export default function VisualHomeScreen() {
     for (const id of prevIds) {
       if (!currentIds.has(id)) changedIds.add(id);
     }
+    for (const id of currentEmbeddedIds) {
+      if (!prevEmbIds.has(id)) changedIds.add(id);
+    }
 
-    const hasChanges = changedIds.size > 0 || embeddedCount !== prevEmbCount;
-    if (!hasChanges) return;
+    if (changedIds.size === 0) return;
 
     prevClusterMarkerIdsRef.current = currentIds;
-    prevClusterEmbeddedCountRef.current = embeddedCount;
+    prevClusterEmbeddedIdsRef.current = currentEmbeddedIds;
 
     // Need at least some embeddings before clustering
-    if (embeddedCount < 3) return;
+    if (currentEmbeddedIds.size < 3) return;
 
     const { clusters: newClusters, needsLabeling } = recomputeClusters(
       allMarkers,
       clustersRef.current,
-      changedIds.size > 0 ? changedIds : undefined,
+      changedIds,
     );
 
     setClusters(newClusters);
@@ -222,7 +225,7 @@ export default function VisualHomeScreen() {
         });
       });
     }
-  }, [allMarkers, clusterVersion, clustersLoaded]);
+  }, [allMarkers, clusterVersion, clustersLoaded, embeddedMarkerCount]);
 
   // Compute cluster positions by averaging member positions
   const clusterPositions = useMemo(() => {
