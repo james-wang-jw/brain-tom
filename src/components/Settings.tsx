@@ -12,7 +12,7 @@ import {
   setSearchMode,
 } from '../utils/modelConfig.ts';
 import { useChatStore } from '../stores/chatStore.ts';
-import { getAllClusters, deleteCluster as deleteClusterFromDB } from '../db/index.ts';
+import { getAllClusters, deleteCluster as deleteClusterFromDB, clearAllSyntheses } from '../db/index.ts';
 import styles from '../styles/Settings.module.css';
 
 interface Props {
@@ -81,6 +81,7 @@ export default function Settings({ open, onClose }: Props) {
   const [confirmClear, setConfirmClear] = useState(false);
   const [cleared, setCleared] = useState(false);
   const [clustersCleared, setClustersCleared] = useState(false);
+  const [synthesesCleared, setSynthesesCleared] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -96,6 +97,7 @@ export default function Settings({ open, onClose }: Props) {
     setConfirmClear(false);
     setCleared(false);
     setClustersCleared(false);
+    setSynthesesCleared(false);
   }, [open]);
 
   const relActive = searchMode === 'llm';
@@ -158,6 +160,12 @@ export default function Settings({ open, onClose }: Props) {
     setClustersCleared(true);
     window.dispatchEvent(new Event('tom-clusters-cleared'));
     setTimeout(() => setClustersCleared(false), 2000);
+  }, []);
+
+  const handleClearSyntheses = useCallback(async () => {
+    await clearAllSyntheses();
+    setSynthesesCleared(true);
+    setTimeout(() => setSynthesesCleared(false), 2000);
   }, []);
 
   const handleClearAllData = useCallback(async () => {
@@ -311,6 +319,13 @@ export default function Settings({ open, onClose }: Props) {
               <span className={styles.statusOk}>Clusters cleared! They will regenerate on next load.</span>
             ) : (
               <button className={styles.clearBtn} onClick={handleClearClusters}>Clear clusters</button>
+            )}
+          </div>
+          <div className={styles.dangerRow}>
+            {synthesesCleared ? (
+              <span className={styles.statusOk}>Assistant text cleared! It will regenerate on next click.</span>
+            ) : (
+              <button className={styles.clearBtn} onClick={handleClearSyntheses}>Clear assistant text</button>
             )}
           </div>
           <div className={styles.dangerRow}>

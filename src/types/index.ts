@@ -38,3 +38,10 @@ export interface ClusterNode {
   updatedAt: number;
   previousLabel?: string; // for LLM context on re-labeling
 }
+
+export interface MarkerSynthesis {
+  markerId: string;
+  text: string;
+  neighborhoodHash: string;
+  generatedAt: number;
+}

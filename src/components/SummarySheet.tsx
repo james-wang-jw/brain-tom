@@ -15,6 +15,10 @@ interface SummarySheetProps {
   onSelectMarker: (marker: TOMMarker) => void;
   allMarkers: TOMMarker[];
   chatTitleMap: Map<string, string>;
+  synthesisText?: string | null;
+  synthesisLoading?: boolean;
+  onMarkerEdited?: (markerId: string) => void;
+  onMarkerDeleted?: (markerId: string) => void;
 }
 
 function stateToHeight(state: SheetState): number {
@@ -39,6 +43,10 @@ export default function SummarySheet({
   onSelectMarker,
   allMarkers,
   chatTitleMap,
+  synthesisText,
+  synthesisLoading,
+  onMarkerEdited,
+  onMarkerDeleted,
 }: SummarySheetProps) {
   const { editMarkerLabel, deleteMarker, loadAllMarkers } = useChatStore();
 
@@ -162,14 +170,17 @@ export default function SummarySheet({
     await editMarkerLabel(marker.id, editValue.trim());
     setEditingLabel(false);
     loadAllMarkers();
-  }, [marker, editValue, editMarkerLabel, loadAllMarkers]);
+    onMarkerEdited?.(marker.id);
+  }, [marker, editValue, editMarkerLabel, loadAllMarkers, onMarkerEdited]);
 
   const handleDelete = useCallback(async () => {
     if (!marker) return;
-    await deleteMarker(marker.id);
+    const id = marker.id;
+    await deleteMarker(id);
     loadAllMarkers();
+    onMarkerDeleted?.(id);
     onStateChange('closed');
-  }, [marker, deleteMarker, loadAllMarkers, onStateChange]);
+  }, [marker, deleteMarker, loadAllMarkers, onStateChange, onMarkerDeleted]);
 
   // Inline style for drag
   const sheetStyle: React.CSSProperties = {};
@@ -219,12 +230,19 @@ export default function SummarySheet({
             </button>
           </div>
 
+          {/* Synthesis text */}
+          {synthesisLoading && (
+            <div className={styles.synthesisShimmer}>
+              <div className={styles.shimmer} />
+              <div className={styles.shimmer} style={{ width: '70%' }} />
+            </div>
+          )}
+          {!synthesisLoading && synthesisText && (
+            <div className={styles.synthesisText}>{synthesisText}</div>
+          )}
+
           {/* Scrollable body */}
           <div className={styles.body}>
-            {marker.extendedContext && (
-              <div className={styles.description}>{marker.extendedContext}</div>
-            )}
-
             {relatedMarkers.length > 0 && (
               <>
                 <div className={styles.divider} />
@@ -243,6 +261,13 @@ export default function SummarySheet({
                     </div>
                   ))}
                 </div>
+              </>
+            )}
+
+            {marker.extendedContext && (
+              <>
+                <div className={styles.divider} />
+                <div className={styles.descriptionMuted}>{marker.extendedContext}</div>
               </>
             )}
 

@@ -5,6 +5,7 @@ import type { Position } from '../utils/forceLayout.ts';
 import { getAllCachedIds } from '../utils/embeddingStore.ts';
 import { recomputeClusters } from '../utils/clusterEngine.ts';
 import { requestClusterLabeling } from '../utils/clusterLabeler.ts';
+import { requestSynthesis, invalidateAdjacentSyntheses } from '../utils/synthesisEngine.ts';
 import { getAllClusters, replaceAllClusters } from '../db/index.ts';
 import TOMMap from './TOMMap.tsx';
 import ChatSheet from './ChatSheet.tsx';
@@ -31,6 +32,10 @@ export default function VisualHomeScreen() {
   const [selectedCluster, setSelectedCluster] = useState<ClusterNode | null>(null);
   const [summaryState, setSummaryState] = useState<SheetState>('closed');
 
+  const [synthesisText, setSynthesisText] = useState<string | null>(null);
+  const [synthesisLoading, setSynthesisLoading] = useState(false);
+  const selectedMarkerRef = useRef<string | null>(null);
+
   const [layoutVersion, setLayoutVersion] = useState(0);
   const [clusters, setClusters] = useState<ClusterNode[]>([]);
   const clustersRef = useRef<ClusterNode[]>([]);
@@ -43,6 +48,7 @@ export default function VisualHomeScreen() {
   const prevClusterEmbeddedIdsRef = useRef<Set<string>>(new Set());
   const [clustersLoaded, setClustersLoaded] = useState(false);
   const [embeddedMarkerCount, setEmbeddedMarkerCount] = useState(0);
+  const prevSynthesisMarkerIdsRef = useRef<Set<string>>(new Set());
 
   const chatTitleMap = new Map(allChats.map((c) => [c.id, c.title]));
 
@@ -154,6 +160,29 @@ export default function VisualHomeScreen() {
     };
   }, [allMarkers]);
 
+  // Invalidate synthesis caches when markers are added/removed
+  useEffect(() => {
+    const currentIds = new Set(allMarkers.map((m) => m.id));
+    const prevIds = prevSynthesisMarkerIdsRef.current;
+    if (prevIds.size === 0) {
+      prevSynthesisMarkerIdsRef.current = currentIds;
+      return;
+    }
+
+    const changed: string[] = [];
+    for (const id of currentIds) {
+      if (!prevIds.has(id)) changed.push(id);
+    }
+    for (const id of prevIds) {
+      if (!currentIds.has(id)) changed.push(id);
+    }
+    prevSynthesisMarkerIdsRef.current = currentIds;
+
+    if (changed.length > 0) {
+      invalidateAdjacentSyntheses(changed, allMarkers);
+    }
+  }, [allMarkers]);
+
   // Load clusters from IDB on mount
   useEffect(() => {
     getAllClusters().then((stored) => {
@@ -260,7 +289,31 @@ export default function VisualHomeScreen() {
     return () => window.removeEventListener('tom-attach-context', handler);
   }, []);
 
-  // Marker click: open summary sheet (don't center map — only center on "Open Chat")
+  // Trigger synthesis for a marker
+  const triggerSynthesis = useCallback((markerId: string) => {
+    selectedMarkerRef.current = markerId;
+    setSynthesisText(null);
+    setSynthesisLoading(true);
+
+    let called = false;
+    requestSynthesis(markerId, allMarkers, (text) => {
+      called = true;
+      if (selectedMarkerRef.current === markerId) {
+        setSynthesisText(text);
+        setSynthesisLoading(false);
+      }
+    });
+
+    // requestSynthesis returns void sync when no adjacent/embedding — clear loading
+    // Use microtask: if callback wasn't called synchronously and won't be async, stop loading
+    setTimeout(() => {
+      if (!called && selectedMarkerRef.current === markerId) {
+        setSynthesisLoading(false);
+      }
+    }, 50);
+  }, [allMarkers]);
+
+  // Marker click: open summary sheet + center camera on the node
   const handleMarkerClick = useCallback((marker: TOMMarker) => {
     setAutoSend(false);
     setSelectedMarker(marker);
@@ -268,7 +321,8 @@ export default function VisualHomeScreen() {
     setSummaryState('half');
     setSheetState('closed');
     setActiveChatId(null);
-  }, []);
+    triggerSynthesis(marker.id);
+  }, [triggerSynthesis]);
 
   // Cluster click: open summary sheet with cluster view
   const handleClusterClick = useCallback((cluster: ClusterNode) => {
@@ -297,9 +351,10 @@ export default function VisualHomeScreen() {
   const handleSelectMarker = useCallback((marker: TOMMarker) => {
     setSelectedMarker(marker);
     setSelectedCluster(null);
+    triggerSynthesis(marker.id);
     setLocateMarkerId(marker.id);
     setTimeout(() => setLocateMarkerId(null), 500);
-  }, []);
+  }, [triggerSynthesis]);
 
   // Summary sheet state change
   const handleSummaryStateChange = useCallback((newState: SheetState) => {
@@ -307,8 +362,22 @@ export default function VisualHomeScreen() {
     if (newState === 'closed') {
       setSelectedMarker(null);
       setSelectedCluster(null);
+      selectedMarkerRef.current = null;
+      setSynthesisText(null);
+      setSynthesisLoading(false);
     }
   }, []);
+
+  // Synthesis invalidation on edit
+  const handleMarkerEdited = useCallback((markerId: string) => {
+    invalidateAdjacentSyntheses([markerId], allMarkers);
+    triggerSynthesis(markerId);
+  }, [allMarkers, triggerSynthesis]);
+
+  // Synthesis invalidation on delete
+  const handleMarkerDeleted = useCallback((markerId: string) => {
+    invalidateAdjacentSyntheses([markerId], allMarkers);
+  }, [allMarkers]);
 
   // Marker drag start (for cross-chat context)
   const handleMarkerDragStart = useCallback((e: React.DragEvent, marker: TOMMarker) => {
@@ -364,6 +433,9 @@ export default function VisualHomeScreen() {
   // When either sheet is half-open, the visible map area is the top 45% of the screen
   const visibleHeightFraction = (sheetState === 'half' || summaryState === 'half') ? 0.45 : 1;
 
+  // Satellite focus: active when summary sheet is open for a marker
+  const focusMarkerId = summaryState !== 'closed' && selectedMarker ? selectedMarker.id : null;
+
   return (
     <div className={styles.container}>
       <TOMMap
@@ -379,6 +451,7 @@ export default function VisualHomeScreen() {
         visibleHeightFraction={visibleHeightFraction}
         clusters={clusters}
         clusterPositions={clusterPositions}
+        focusMarkerId={focusMarkerId}
       />
 
       <div className={styles.searchOverlay}>
@@ -407,6 +480,10 @@ export default function VisualHomeScreen() {
         onSelectMarker={handleSelectMarker}
         allMarkers={allMarkers}
         chatTitleMap={chatTitleMap}
+        synthesisText={synthesisText}
+        synthesisLoading={synthesisLoading}
+        onMarkerEdited={handleMarkerEdited}
+        onMarkerDeleted={handleMarkerDeleted}
       />
 
       <button

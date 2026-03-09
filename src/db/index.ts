@@ -1,8 +1,8 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { Chat, TOMMarker, MarkerFeedback, ClusterNode } from '../types/index.ts';
+import type { Chat, TOMMarker, MarkerFeedback, ClusterNode, MarkerSynthesis } from '../types/index.ts';
 
 const DB_NAME = 'tom-app';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
@@ -32,6 +32,10 @@ function getDB() {
         // Clusters store (v3)
         if (!db.objectStoreNames.contains('clusters')) {
           db.createObjectStore('clusters', { keyPath: 'id' });
+        }
+        // Syntheses store (v4)
+        if (!db.objectStoreNames.contains('syntheses')) {
+          db.createObjectStore('syntheses', { keyPath: 'markerId' });
         }
       },
     });
@@ -182,15 +186,40 @@ export async function replaceAllClusters(clusters: ClusterNode[]): Promise<void>
   await tx.done;
 }
 
+// === Syntheses ===
+
+export async function getSynthesis(markerId: string): Promise<MarkerSynthesis | undefined> {
+  const db = await getDB();
+  return db.get('syntheses', markerId);
+}
+
+export async function saveSynthesis(synthesis: MarkerSynthesis): Promise<void> {
+  const db = await getDB();
+  await db.put('syntheses', synthesis);
+}
+
+export async function deleteSynthesis(markerId: string): Promise<void> {
+  const db = await getDB();
+  await db.delete('syntheses', markerId);
+}
+
+export async function clearAllSyntheses(): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction('syntheses', 'readwrite');
+  await tx.store.clear();
+  await tx.done;
+}
+
 // === Clear all data ===
 
 export async function clearAllData(): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['chats', 'markers', 'markerFeedback', 'embeddings', 'clusters'], 'readwrite');
+  const tx = db.transaction(['chats', 'markers', 'markerFeedback', 'embeddings', 'clusters', 'syntheses'], 'readwrite');
   await tx.objectStore('chats').clear();
   await tx.objectStore('markers').clear();
   await tx.objectStore('markerFeedback').clear();
   await tx.objectStore('embeddings').clear();
   await tx.objectStore('clusters').clear();
+  await tx.objectStore('syntheses').clear();
   await tx.done;
 }

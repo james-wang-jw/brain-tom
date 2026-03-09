@@ -5,6 +5,11 @@ import { getEmbedding, cosineSimilarity } from '../utils/embeddingStore.ts';
 import { MARKER_SIMILARITY_THRESHOLD } from '../api/relevance.ts';
 import styles from '../styles/TOMMap.module.css';
 
+interface FocusEffect {
+  opacity: number;
+  scale: number;
+}
+
 interface TOMMapProps {
   positions: Map<string, Position>;
   markers: TOMMarker[];
@@ -20,6 +25,7 @@ interface TOMMapProps {
   visibleHeightFraction?: number;
   clusters?: ClusterNode[];
   clusterPositions?: Map<string, Position>;
+  focusMarkerId?: string | null;
 }
 
 export default function TOMMap({
@@ -35,6 +41,7 @@ export default function TOMMap({
   visibleHeightFraction = 1,
   clusters = [],
   clusterPositions,
+  focusMarkerId,
 }: TOMMapProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -54,6 +61,44 @@ export default function TOMMap({
 
   // Pinch zoom
   const pinchRef = useRef<{ dist: number; zoom: number } | null>(null);
+
+  // Focus state for fade transitions
+  const [wasFocused, setWasFocused] = useState(false);
+  const wasFocusedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Animated camera pan (temporarily enables CSS transition on canvas)
+  const [cameraAnimating, setCameraAnimating] = useState(false);
+  const cameraAnimTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Center camera on focused marker + manage wasFocused for return animation
+  const prevFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (focusMarkerId) {
+      setWasFocused(true);
+      clearTimeout(wasFocusedTimerRef.current);
+
+      // Animate camera to the focused marker
+      if (viewportRef.current) {
+        const pos = positions.get(focusMarkerId);
+        if (pos) {
+          const vw = viewportRef.current.clientWidth;
+          const vh = viewportRef.current.clientHeight * visibleHeightFraction;
+          const targetZoom = Math.max(zoom, 1);
+          setCameraAnimating(true);
+          clearTimeout(cameraAnimTimerRef.current);
+          setPanX(vw / 2 - pos.x * targetZoom);
+          setPanY(vh / 2 - pos.y * targetZoom);
+          setZoom(targetZoom);
+          // Remove transition after animation completes so manual pan stays instant
+          cameraAnimTimerRef.current = setTimeout(() => setCameraAnimating(false), 500);
+        }
+      }
+    } else if (prevFocusRef.current) {
+      // Was focused, now unfocused — keep transition class for 500ms
+      wasFocusedTimerRef.current = setTimeout(() => setWasFocused(false), 500);
+    }
+    prevFocusRef.current = focusMarkerId ?? null;
+  }, [focusMarkerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Re-center camera when layout recomputes (layoutVersion changes)
   const lastVersionRef = useRef(-1);
@@ -96,9 +141,12 @@ export default function TOMMap({
     const vh = viewportRef.current.clientHeight * visibleHeightFraction;
     const targetZoom = Math.max(zoom, 1);
 
+    setCameraAnimating(true);
+    clearTimeout(cameraAnimTimerRef.current);
     setPanX(vw / 2 - pos.x * targetZoom);
     setPanY(vh / 2 - pos.y * targetZoom);
     setZoom(targetZoom);
+    cameraAnimTimerRef.current = setTimeout(() => setCameraAnimating(false), 500);
   }, [locateMarkerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Pointer handlers for panning ---
@@ -221,8 +269,8 @@ export default function TOMMap({
   }
 
   // Zoom-based opacity for clusters vs individual markers
-  const ZOOM_FADE_LOW = 1.1;
-  const ZOOM_FADE_HIGH = 1.3;
+  const ZOOM_FADE_LOW = 0.65;
+  const ZOOM_FADE_HIGH = 0.85;
   const clusterOpacity = zoom <= ZOOM_FADE_LOW ? 1 : zoom >= ZOOM_FADE_HIGH ? 0 : (ZOOM_FADE_HIGH - zoom) / (ZOOM_FADE_HIGH - ZOOM_FADE_LOW);
   const memberOpacity = zoom >= ZOOM_FADE_HIGH ? 1 : zoom <= ZOOM_FADE_LOW ? 0 : (zoom - ZOOM_FADE_LOW) / (ZOOM_FADE_HIGH - ZOOM_FADE_LOW);
 
@@ -237,6 +285,45 @@ export default function TOMMap({
     }
     return ids;
   }, [clusters]);
+
+  // Focus effects: opacity + scale for each marker (nodes stay at original positions)
+  const focusEffects = useMemo((): Map<string, FocusEffect> | null => {
+    if (!focusMarkerId) return null;
+
+    const focusEmb = getEmbedding(focusMarkerId);
+    const adjacentIds = new Set<string>();
+    if (focusEmb) {
+      for (const { marker } of visibleMarkers) {
+        if (marker.id === focusMarkerId) continue;
+        const emb = getEmbedding(marker.id);
+        if (!emb) continue;
+        if (cosineSimilarity(focusEmb, emb) >= MARKER_SIMILARITY_THRESHOLD) {
+          adjacentIds.add(marker.id);
+        }
+      }
+    }
+
+    const effects = new Map<string, FocusEffect>();
+
+    // Selected node: enlarge
+    effects.set(focusMarkerId, { opacity: 1, scale: 1.4 });
+
+    // Adjacent: full opacity, shrink based on count
+    const adjCount = adjacentIds.size;
+    const adjScale = (adjCount > 8 ? 0.65 : adjCount > 6 ? 0.75 : adjCount > 4 ? 0.85 : 1) * 0.8;
+    for (const id of adjacentIds) {
+      effects.set(id, { opacity: 1, scale: adjScale });
+    }
+
+    // Non-adjacent: fade out
+    for (const { marker } of visibleMarkers) {
+      if (!effects.has(marker.id)) {
+        effects.set(marker.id, { opacity: 0.15, scale: 1 });
+      }
+    }
+
+    return effects;
+  }, [focusMarkerId, visibleMarkers]);
 
   // Cluster click handler
   const handleClusterClick = useCallback((cluster: ClusterNode) => {
@@ -299,11 +386,11 @@ export default function TOMMap({
       onTouchEnd={handleTouchEnd}
     >
       <div
-        className={styles.canvas}
+        className={`${styles.canvas} ${cameraAnimating ? styles.cameraAnimate : ''}`}
         style={{ transform: `translate(${panX}px, ${panY}px) scale(${zoom})` }}
       >
         {/* Connection lines from active marker to related markers */}
-        {connectionLines.length > 0 && memberOpacity > 0 && (
+        {connectionLines.length > 0 && (memberOpacity > 0 || focusEffects) && (
           <svg className={styles.connectionSvg}>
             {connectionLines.map((line) => (
               <line
@@ -320,17 +407,22 @@ export default function TOMMap({
         )}
 
         {visibleMarkers.map(({ marker, pos }) => {
+          const fx = focusEffects?.get(marker.id);
           const inCluster = clusteredMarkerIds.has(marker.id);
-          const opacity = inCluster ? memberOpacity : 1;
-          const noPointer = inCluster && memberOpacity <= 0.3;
+          const baseOpacity = inCluster ? memberOpacity : 1;
+          const opacity = fx ? fx.opacity * Math.max(baseOpacity, fx.opacity) : baseOpacity;
+          const scale = fx?.scale ?? 1;
+          const noPointer = !fx && inCluster && memberOpacity <= 0.3;
+          const useFocusTransition = focusEffects || wasFocused;
           return (
             <div
               key={marker.id}
-              className={`${styles.node} ${activeMarkerId === marker.id ? styles.nodeActive : ''}`}
+              className={`${styles.node} ${activeMarkerId === marker.id ? styles.nodeActive : ''} ${useFocusTransition ? styles.focusTransition : ''}`}
               style={{
                 left: pos.x,
                 top: pos.y,
                 opacity,
+                transform: `translate(-50%, -50%) scale(${scale})`,
                 pointerEvents: noPointer ? 'none' : undefined,
               }}
               onClick={() => handleMarkerClick(marker)}
@@ -349,15 +441,17 @@ export default function TOMMap({
         {clusterPositions && clusters.map((cluster) => {
           const pos = clusterPositions.get(cluster.id);
           if (!pos || clusterOpacity <= 0) return null;
+          const cOp = focusEffects ? clusterOpacity * 0.1 : clusterOpacity;
+          const useFocusTransition = focusEffects || wasFocused;
           return (
             <div
               key={cluster.id}
-              className={styles.clusterNode}
+              className={`${styles.clusterNode} ${useFocusTransition ? styles.focusTransition : ''}`}
               style={{
                 left: pos.x,
                 top: pos.y,
-                opacity: clusterOpacity,
-                pointerEvents: clusterOpacity <= 0.3 ? 'none' : undefined,
+                opacity: cOp,
+                pointerEvents: (cOp <= 0.3 || focusEffects) ? 'none' : undefined,
               }}
               onClick={() => handleClusterClick(cluster)}
             >
